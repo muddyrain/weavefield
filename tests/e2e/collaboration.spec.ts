@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const project = process.cwd();
 let storage: string;
@@ -54,6 +54,91 @@ test.afterAll(async () => {
   await stopCollab();
   await rm(storage, { recursive: true, force: true });
 });
+
+async function layoutMetrics(page: Page) {
+  return page.evaluate(() => {
+    const rect = (selector: string) => {
+      const element = document.querySelector(selector)!;
+      const box = element.getBoundingClientRect();
+      return { x: box.x, y: box.y, right: box.right, bottom: box.bottom, width: box.width, height: box.height };
+    };
+    const title = document.querySelector('h1')!;
+    const range = document.createRange();
+    range.selectNodeContents(title.firstChild!);
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      main: rect('.main-panel'), sidebar: rect('.sidebar'), topbar: rect('.topbar'),
+      titleLines: range.getClientRects().length,
+      controls: ['.icon-button', '.breadcrumb', '.demo-pill', '.avatar-stack', '.share-btn'].map(rect),
+      documentWidth: document.documentElement.scrollWidth,
+      documentHeight: document.documentElement.scrollHeight,
+    };
+  });
+}
+
+for (const width of [1440, 1280]) {
+  test(`sidebar layout stays usable at ${width}px through collapse, expand and refresh`, async ({ page }, testInfo) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/?doc=sidebar-layout-${width}`);
+    await expect(page.locator('.editor-status')).toContainText('已同步');
+    await page.evaluate(() => document.fonts.ready);
+    const editor = page.locator('[contenteditable="true"]').first();
+    const toggle = page.getByRole('button', { name: '切换侧栏' });
+    const measurements: Array<Awaited<ReturnType<typeof layoutMetrics>> & { state: string }> = [];
+
+    async function checkLayout(state: string, expanded: boolean) {
+      const metrics = await layoutMetrics(page);
+      measurements.push({ state, ...metrics });
+      expect(metrics.main.width, `${state}: main must fill the available width`).toBeGreaterThan(900);
+      expect(Math.abs(metrics.main.right - width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(metrics.main.x - metrics.sidebar.width)).toBeLessThanOrEqual(1);
+      if (expanded) expect(metrics.sidebar.width).toBeGreaterThan(0);
+      else {
+        expect(metrics.sidebar.width).toBe(0);
+        expect(Math.abs(metrics.main.width - width)).toBeLessThanOrEqual(1);
+      }
+      expect(metrics.titleLines, `${state}: title must stay on one line`).toBe(1);
+      expect(Math.abs(metrics.topbar.width - metrics.main.width)).toBeLessThanOrEqual(1);
+      for (const control of metrics.controls) {
+        expect(control.height).toBeGreaterThan(0);
+        expect(control.y).toBeGreaterThanOrEqual(metrics.topbar.y);
+        expect(control.bottom).toBeLessThanOrEqual(metrics.topbar.bottom);
+        expect(control.x).toBeGreaterThanOrEqual(metrics.main.x);
+        expect(control.right).toBeLessThanOrEqual(metrics.main.right);
+      }
+      expect(metrics.documentWidth).toBeLessThanOrEqual(width);
+      // 短文档不应因为错误换行产生几千像素的纵向滚动。
+      expect(metrics.documentHeight).toBeLessThanOrEqual(metrics.viewport.height + 1);
+      await expect(editor).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`${state}.png`), fullPage: true });
+      return metrics;
+    }
+
+    const expanded = await checkLayout('expanded', true);
+    await toggle.click();
+    const collapsed = await checkLayout('collapsed', false);
+    expect(collapsed.main.width).toBeGreaterThan(expanded.main.width);
+    await editor.fill(`侧栏折叠后仍可编辑 ${width}`);
+    await toggle.click();
+    const restored = await checkLayout('expanded-again', true);
+    expect(restored.main.width).toBe(expanded.main.width);
+    await expect(editor).toContainText(`侧栏折叠后仍可编辑 ${width}`);
+
+    await toggle.click();
+    await page.reload();
+    await expect(page.locator('.editor-status')).toContainText('已同步');
+    // 当前侧栏只保存在 React 内存中，刷新按既有设计恢复默认展开。
+    await checkLayout('refreshed', true);
+    await expect(editor).toContainText(`侧栏折叠后仍可编辑 ${width}`);
+    expect(errors).toEqual([]);
+    await testInfo.attach('layout-metrics', {
+      body: JSON.stringify(measurements, null, 2), contentType: 'application/json',
+    });
+  });
+}
 
 test('two windows sync, reconnect and restore binary state after a server restart', async ({ browser, request }) => {
   const health = await request.get('http://127.0.0.1:13001/health');

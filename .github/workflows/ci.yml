@@ -14,7 +14,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
       # Bootstrap exception: no lockfile generated in offline build environment.
       # Task 0 MUST commit pnpm-lock.yaml and switch to --frozen-lockfile.
       - run: pnpm install --no-frozen-lockfile

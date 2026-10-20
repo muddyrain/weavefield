@@ -1,3 +1,13 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
+  - esbuild
+  - prisma
+
+# Nest CLI pins webpack 5.106.2; schema-utils 4.8 adds a newer webpack peer.
+overrides:
+  schema-utils@^4: 4.3.3

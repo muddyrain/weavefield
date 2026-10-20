@@ -13,10 +13,11 @@ jobs:
           version: 10.18.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      # Bootstrap exception: no lockfile generated in offline build environment.
-      # Task 0 MUST commit pnpm-lock.yaml and switch to --frozen-lockfile.
-      - run: pnpm install --no-frozen-lockfile
+          node-version-file: .nvmrc
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e

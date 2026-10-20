@@ -5,7 +5,8 @@ import * as Y from 'yjs';
 import { assertDocRoom } from './rooms';
 
 const ROOT = path.resolve(process.cwd(), '.local', 'snapshots');
-const toFile = (room: string) => path.join(ROOT, `${assertDocRoom(room)}.bin`);
+// Colons are invalid in portable filenames (and denote NTFS alternate streams).
+const toFile = (room: string) => path.join(ROOT, `${assertDocRoom(room).replace(':', '-')}.bin`);
 
 // DEV-ONLY binary state persistence. Production path: PostgreSQL, see ADR-0002.
 export async function loadSnapshot(room: string): Promise<Y.Doc> {

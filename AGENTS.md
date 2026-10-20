@@ -1,8 +1,8 @@
-# Codex / Coding Agent instructions — Weavefield
+# Weavefield · Codex / 编程智能体开发规范
 
-This repository is **a portfolio-grade realtime collaboration product**. The human developer owns architecture, decisions, code review and verification. Make focused, reviewable changes.
+本仓库是用于展示前端、全栈和 AI 应用工程能力的**作品集级实时协作产品**。智能体负责实现与验证改动；人类开发者负责架构决策、代码审查和最终验收。
 
-## What to read first
+## 开始前必读
 
 1. `README.md`
 2. `docs/PRD.md`
@@ -11,36 +11,92 @@ This repository is **a portfolio-grade realtime collaboration product**. The hum
 5. `docs/ROADMAP.md`
 6. `docs/CODEX_TASKS.md`
 
-## Product priorities
+## 语言约定
 
-- First vertical slice: localhost two-tab collaborative rich-text editing with server-side persisted Yjs binary state; then authenticated workspaces.
-- Second: link document block/requirement, workflow node and task via stable IDs; do not merely synchronize duplicate text.
-- Later: AI-assisted review as **proposed** patches with human approval, not silent overwrites.
-- No generic Figma/Notion replacement, no spreadsheet engine, no multi-agent orchestration in MVP.
+- 默认使用简体中文与用户沟通，包括开发计划、问题分析、测试报告和交付总结。
+- 默认使用简体中文编写 PRD、架构说明、开发路线图和技术决策文档。
+- 代码中的变量名、函数名、类型名、API 名称及技术协议遵循行业惯例，不强制翻译为中文。
+- 代码注释优先使用简体中文；引用第三方 API、库或规范时，保留必要的英文原文。
+- 错误日志、命令输出和第三方错误信息保留原文，并在报告中用中文解释。
+- 不得为了中文化而修改现有代码标识符、命令或配置值。
 
-## Architecture rules
+## 产品优先级
 
-- `apps/web`: UI and local interaction state. No database credentials, third-party API secrets, or filesystem access.
-- `apps/api`: NestJS business resources, auth, membership checks, access policy and AI gateway.
-- `apps/collab`: Yjs/Hocuspocus sync and binary persistence. Dev-token demo MUST NEVER be deployed publicly.
-- `packages/database`: single Prisma schema/source of migrations.
-- `packages/shared`: transport DTO/schema contract.
-- Use existing BlockNote and React Flow libraries; never implement CRDT or rich-text engine from scratch.
-- Maintain Yjs binary format on persistence; do not rehydrate a historical CRDT from JSON.
-- Validate object permissions **on the server** before subscription/read/write; never trust client room names or role flags.
-- Treat AI output and imported HTML as untrusted; no arbitrary execution.
+- 第一条端到端功能：在 localhost 的两个标签页中协同编辑富文本，并在服务端持久化 Yjs 二进制状态；随后再实现带身份认证的工作空间。
+- 第二步：通过稳定 ID 关联文档块或需求、流程节点和任务，不得仅同步多份重复文本。
+- 后续阶段：AI 辅助审查以**补丁提案**呈现，经人工批准后应用，不得静默覆盖。
+- MVP 不开发通用的 Figma/Notion 替代品、电子表格引擎或多智能体编排。
 
-## Execution practice
+## 架构约束
 
-- BEFORE editing: state the slice, affected packages, risks, and acceptance test.
-- Split work into small, coherent commits. Never change `valley-mas` or unrelated repos.
-- Tests required for functional changes; run `pnpm typecheck && pnpm test && pnpm build` when dependencies are installed.
-- If tooling or network unavailable, say so. Do not claim success for commands not run.
-- Add ADR when changing protocol, storage format, or auth design.
-- Prefer accessible components, keyboard support and reduced-motion friendly UI.
-- Secrets must remain in `.env` (gitignored). No hardcoded production tokens.
-- If creating any temporary bypass for development, bind localhost and refuse production, with TODO and docs.
+- `apps/web`：负责 UI 和本地交互状态；禁止包含数据库凭据、第三方 API 密钥或访问文件系统。
+- `apps/api`：负责 NestJS 业务资源、身份认证、成员身份检查、访问策略和 AI 网关。
+- `apps/collab`：负责 Yjs/Hocuspocus 同步及二进制持久化。使用开发令牌的演示服务**绝对不得部署到公网**。
+- `packages/database`：作为 Prisma schema 和迁移定义的唯一来源。
+- `packages/shared`：定义传输 DTO / schema 契约。
+- 使用现有 BlockNote 和 React Flow 库；禁止从零实现 CRDT 或富文本引擎。
+- 持久化必须保留 Yjs 二进制格式；禁止从 JSON 重建历史 CRDT 状态。
+- 订阅、读取或写入前，必须**在服务端**验证对象权限；禁止信任客户端房间名或角色标记。
+- 将 AI 输出和导入的 HTML 视为不可信内容，禁止任意执行。
 
-## Immediate next task
+<!-- markdownlint-disable-next-line MD033 -->
+<a id="execution-workflow"></a>
 
-Follow `docs/CODEX_TASKS.md` **Task 0: bootstrap verification**, then Task 1. Do not implement all roadmap phases at once.
+## 开发流程
+
+每个实现任务都遵循**规划 → 实现 → 验证 → 报告 → 人工审查**。说明的详略应与任务规模相称；简单、低风险的修改只需简短计划和报告。
+
+### 1. 修改前规划
+
+- 检查当前可用且与任务相关的技能，包括 superpowers；使用前先阅读其说明。用户指令优先；所需能力不可用时必须明确说明。
+- 对于中大型任务，先阅读相关架构文档和现有实现，再在修改前说明目标、验收条件、涉及模块和风险。
+- 对于小任务，简要说明范围和适当的验证方式，避免编写冗长的计划文档。
+- 如果拟采用的技术方案存在问题，先解释原因，再在授权范围内选择有依据的替代方案。目标不清晰时，先与用户讨论，再开始实现。
+
+### 2. 渐进式实现
+
+- 按模块和可验证的功能逐步实现，使每次改动保持小范围、可审查。避免无关重构，也不为后续里程碑提前实现复杂架构。
+- 保持代码易于理解、模块边界清晰、类型可靠。仅在必要时增加依赖，并说明原因。
+- 为关键逻辑编写适当的自动化测试。考虑实时协作、权限、数据持久化和 AI 修改的失败场景；不得为了速度而降低安全性或测试质量。
+- 对复杂实现解释设计原因。在适当文档中记录重要架构决策；修改协议、存储格式或认证设计时，必须新增 ADR。
+- 优先采用无障碍组件、键盘操作支持，以及兼容减少动态效果偏好的 UI。
+- 密钥必须保存在已被 Git 忽略的 `.env` 中。禁止硬编码生产令牌。
+- 任何临时开发绕过机制都必须绑定 localhost、拒绝在生产环境启动，并附有 TODO 和文档说明。
+- 禁止修改 `valley-mas` 或其他无关仓库。
+
+### 3. 真实执行验证
+
+- 根据改动选择适当的检查：TypeScript 类型检查、单元测试、集成测试、构建检查，以及 UI 或实时协作功能的浏览器测试。功能修改必须有测试；依赖已安装时，必须执行 `pnpm typecheck && pnpm test && pnpm build`。
+- 涉及权限、二进制持久化与重启恢复、断线与重连时，必须验证相应行为，包括权限拒绝和相关失败场景，不能只验证成功路径。
+- 仅修改文档时，执行适当的 Markdown、编码和 Git diff 检查；未影响应用行为时，无需运行应用测试。
+- 只报告实际结果。存在测试文件不等于测试通过；未执行的检查不得报告为通过。必须区分自动化测试、人工观察和缓存结果。
+- 失败项必须保持可见，直到修复并重新执行检查。跳过失败测试后，不得宣称全部成功。
+- 工具、依赖或网络导致某项检查无法执行时，说明具体原因并标记为**未验证**。未满足的验收条件仍视为未完成。
+
+### 4. 生成交付报告
+
+- 每个实现任务结束时，都必须在最终回复中提供交付摘要。只报告本次任务实际发生的改动和验证。
+- 普通开发任务的摘要应包括完成情况、修改文件、实际检查与结果、遗留问题以及 Git / diff 状态，详略与复杂度相称。小任务的报告保持简短，默认不新增 Markdown 报告文件。
+- M0、M1 等重要里程碑必须将详细报告保存到 `docs/reports/<milestone>.md`，例如 `docs/reports/M0.md`；需要时创建目录。在最终回复中概述结果并链接报告。里程碑未完成时，应记录实际状态，不得宣称完成。
+
+里程碑详细报告必须包含：
+
+1. 任务目标，以及对照验收条件的完成情况。
+2. 修改文件和重要变更。
+3. 关键技术决策及其原因。
+4. 实际执行的命令和测试结果。
+5. 失败项、警告和未验证项，以及相应原因。
+6. 安全、兼容性、性能及数据持久化风险；不适用的类别必须明确标注。
+7. 已知限制和下一步建议。
+8. Git 状态及 diff 摘要，区分本次任务改动和任务开始前已有的改动。
+
+### 5. Git 操作与人工审查
+
+- 开始仓库相关工作前，检查 GitNexus 能力，可用时优先使用；不可用时明确说明，并退回原生 Git。
+- 修改前和任务结束时，检查 `git status` 及必要的 `git diff`。保留用户已有改动；报告意外修改、无关文件变更和未解决的问题。
+- 展示变更摘要和本次任务的完整 diff，可直接展示，也可提供文件或审查视图链接，然后等待人工审查。
+- 默认不提交、不推送，也不重写 Git 历史。这些操作必须由用户明确要求；测试通过不构成提交授权。用户要求提交时，保持提交小而完整、内容相关。
+
+## 任务范围
+
+任务定义和阶段验收门槛以 `docs/CODEX_TASKS.md` 和 `docs/ROADMAP.md` 为依据。仅执行用户当前授权的任务或里程碑；不得从 `Task 0` 自动推进到 `Task 1`，也不得一次实现整条路线图。

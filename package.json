@@ -4,20 +4,22 @@
   "private": true,
   "packageManager": "pnpm@10.18.0",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.23.3 <23"
   },
   "scripts": {
-    "dev": "turbo dev --parallel",
+    "dev": "turbo dev",
     "dev:web": "pnpm --filter @weavefield/web dev",
     "dev:api": "pnpm --filter @weavefield/api dev",
     "dev:collab": "pnpm --filter @weavefield/collab dev",
     "build": "turbo build",
-    "typecheck": "turbo typecheck",
+    "typecheck": "turbo typecheck && tsc --noEmit -p tsconfig.e2e.json",
     "test": "turbo test",
+    "test:e2e": "playwright test",
     "db:generate": "pnpm --filter @weavefield/database db:generate",
     "db:migrate": "pnpm --filter @weavefield/database db:migrate"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@types/node": "^22.15.0",
     "turbo": "^2.5.0",
     "typescript": "^5.9.0",

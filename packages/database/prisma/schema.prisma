@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorkspaceRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model User {
+  id          String       @id @default(cuid())
+  email       String       @unique
+  displayName String
+  createdAt   DateTime     @default(now())
+  memberships Membership[]
+}
+
+model Workspace {
+  id          String       @id @default(cuid())
+  slug        String       @unique
+  name        String
+  createdAt   DateTime     @default(now())
+  memberships Membership[]
+  documents   Document[]
+  boards      Board[]
+  tasks       Task[]
+  links       EntityLink[]
+}
+
+model Membership {
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(VIEWER)
+  createdAt   DateTime      @default(now())
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([workspaceId, userId])
+}
+
+model Document {
+  id            String             @id @default(cuid())
+  workspaceId   String
+  title         String
+  ydocRoomName  String             @unique
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  archivedAt    DateTime?
+  workspace     Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  snapshots     DocumentSnapshot[]
+  @@index([workspaceId, updatedAt])
+}
+
+model DocumentSnapshot {
+  id          String   @id @default(cuid())
+  documentId  String
+  revision    Int
+  binaryState Bytes
+  createdAt   DateTime @default(now())
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  @@unique([documentId, revision])
+  @@index([documentId, createdAt])
+}
+
+model Board {
+  id          String      @id @default(cuid())
+  workspaceId String
+  title       String
+  createdAt   DateTime    @default(now())
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  nodes       BoardNode[]
+  edges       BoardEdge[]
+  @@index([workspaceId])
+}
+
+model BoardNode {
+  id        String  @id @default(cuid())
+  boardId   String
+  kind      String
+  x         Float   @default(0)
+  y         Float   @default(0)
+  data      Json
+  version   Int     @default(1)
+  board     Board   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  @@index([boardId])
+}
+
+model BoardEdge {
+  id        String @id @default(cuid())
+  boardId   String
+  sourceId  String
+  targetId  String
+  label     String?
+  board     Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  @@index([boardId])
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  workspaceId String
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+  version     Int        @default(1)
+  assigneeId  String?
+  dueAt       DateTime?
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, status])
+}
+
+model EntityLink {
+  id          String    @id @default(cuid())
+  workspaceId String
+  sourceType  String
+  sourceId    String
+  targetType  String
+  targetId    String
+  relation    String    @default("RELATES_TO")
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([workspaceId, sourceType, sourceId, targetType, targetId, relation])
+  @@index([workspaceId, targetType, targetId])
+}

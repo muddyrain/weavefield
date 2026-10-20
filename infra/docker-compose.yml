@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: weavefield
+      POSTGRES_PASSWORD: weavefield_dev_only
+      POSTGRES_DB: weavefield
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - weavefield_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U weavefield -d weavefield"]
+      interval: 5s
+      retries: 10
+volumes:
+  weavefield_pg:

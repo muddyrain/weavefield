@@ -9,8 +9,9 @@
 - [x] 文件骨架 / 基本文档 / ADR
 - [x] Web demo / `/health` / localhost collab 源代码
 - [x] Prisma schema 草案与 Docker Compose
-- [ ] 在可访问 npm 的开发机执行 `pnpm install` 并生成锁文件
-- [ ] 运行 typecheck / unit / build；修正版本兼容问题
+- [x] 在开发机安装依赖并生成锁文件，CI 使用 frozen-lockfile
+- [x] Node 22 LTS 下运行 typecheck / unit / build；修正版本兼容问题
+- [x] Playwright 双窗口同步、刷新、断线重连与服务重启后恢复
 - [ ] 创建远程 GitHub 独立仓库并推送
 
 **完成定义：** 三个 app 均可启动；单浏览器打开编辑器；两个浏览器共享文本；刷新保持内容；已有代码通过类型检查和测试。

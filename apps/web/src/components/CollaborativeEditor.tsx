@@ -16,7 +16,7 @@ function LiveEditor({ doc, provider, guestName }: {
 }) {
   const editor = useCreateBlockNote(withCollaboration({
     collaboration: {
-      provider,
+      provider: { awareness: provider.awareness ?? undefined },
       fragment: doc.getXmlFragment('document-store'),
       user: { name: guestName, color: '#7486f7' },
       showCursorLabels: 'always',

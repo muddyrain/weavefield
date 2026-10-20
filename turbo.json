@@ -1,9 +1,11 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
-    "build": { "dependsOn": ["^build"], "outputs": ["dist/**", "build/**"] },
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "@weavefield/shared#build": { "outputs": [] },
+    "@weavefield/collab#build": { "outputs": [] },
     "typecheck": { "dependsOn": ["^typecheck"] },
-    "test": { "dependsOn": ["^build"], "outputs": ["coverage/**"] },
+    "test": { "dependsOn": ["^build"], "outputs": [] },
     "dev": { "cache": false, "persistent": true }
   }
 }

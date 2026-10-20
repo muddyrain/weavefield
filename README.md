@@ -87,7 +87,7 @@ pnpm build
 
 ## 在 GitHub 新建独立仓库并推送
 
-在 GitHub 新建 **空仓库** `weavefield`，建议先设为 Private，**不要选择自动创建 README / .gitignore / LICENSE**（本地已有提交）。
+在 GitHub 新建 **空仓库** `weavefield`，建议先设为 Private，**不要选择自动创建 README / .gitignore / LICENSE**（本地已有提交）。如果电脑装有 GitHub CLI（`gh auth login` 已完成），也可以直接从本地仓库根目录运行 `gh repo create weavefield --private --source=. --remote=origin --push`，免去手动新建和添加 remote。
 
 ```bash
 git remote add origin https://github.com/<YOUR_USERNAME>/weavefield.git

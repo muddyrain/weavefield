@@ -13,8 +13,9 @@ Weavefield 是一个面向 2–8 人小团队的实时协作工作台：**多人
 - [x] M0 依赖安装、锁文件、类型检查、单元测试与构建验证（Node 22 LTS）
 - [x] M1.1 PostgreSQL 16 / Prisma 基础设施已通过 PR #1 合入 main，Linux CI 已通过（见 [M1.1 报告](docs/reports/M1.1.md)）
 - [x] M1.2 密码认证、数据库 Session 与 React 登录交互已通过 PR #2 合入 main，Linux CI 已通过（见 [M1.2 报告](docs/reports/M1.2.md)）
-- [x] M1.3 工作空间、成员管理与服务端 RBAC 本地验收通过，待人工审查（见 [M1.3 报告](docs/reports/M1.3.md)）
-- [ ] **文档 CRUD、正式协作鉴权及 Yjs PostgreSQL 持久化尚未实现**；Workspace 角色不会授予 M0 协作权限
+- [x] M1.3 工作空间、成员管理与服务端 RBAC 已通过 PR #3 合并，合并后 Linux CI 通过（见 [阶段报告](docs/reports/M1.3.md)）
+- [x] M1.4 真实文档元数据创建、列表、详情、重命名与归档已实现，当前仅本地验证、待人工审查（见 [M1.4 报告](docs/reports/M1.4.md)）
+- [ ] **正式正文编辑、协作鉴权及 Yjs PostgreSQL 持久化尚未实现**；Workspace 角色不会授予 M0 协作权限
 - [x] GitHub 仓库已创建，本地 `origin` 已配置
 - [x] M0 及后续测试、演示体验修复已推送，Linux GitHub Actions 已通过
 
@@ -217,7 +218,36 @@ pnpm test:workspaces
 pnpm test:e2e
 ```
 
-两项均需上述隔离 PostgreSQL 16 测试库。API 测试通过真实 HTTP 和数据库验证租户隔离、角色、输入、会话、CSRF 与并发 OWNER 不变量；CI 已加入同一检查。浏览器测试覆盖创建、切换、成员管理、刷新恢复、失效权限及移动端反馈。M1.3 当前仅完成 macOS 本地验收，未提交、未推送，Linux CI 待后续授权验证。
+两项均需上述隔离 PostgreSQL 16 测试库。API 测试通过真实 HTTP 和数据库验证租户隔离、角色、输入、会话、CSRF 与并发 OWNER 不变量；CI 已加入同一检查。浏览器测试覆盖创建、切换、成员管理、刷新恢复、失效权限及移动端反馈。M1.3 已通过 PR #3 合并，合并后 Linux CI 39608231601 为 success；阶段报告保留当时本地验收的记录。
+
+## M1.4：真实文档元数据
+
+沿用前述 PostgreSQL 16、API 环境配置和启动命令：执行 `pnpm --filter @weavefield/database db:deploy`，分别启动 `pnpm dev:api` 与 `pnpm dev:web`，登录后打开右上角工作空间面板，选择真实空间即可管理文档。已有 Document 模型包含全部必要字段，本阶段没有新增 Schema 或 Migration。需要体验 M0 演示时另启 `pnpm dev:collab`。
+
+空间内支持创建标题、查看文档编号与时间、重命名和归档，刷新后从真实 API 恢复。OWNER / EDITOR 可以写，VIEWER 仅可读。切换空间、账号或退出会清理当前文档；加载、错误和过期权限均有反馈。**这里只管理元数据，不是正文编辑器；不会为真实文档连接 Nova 的演示房间，正文协作属于 M2。**
+
+以下为 API 内部路径；浏览器通过同源 `/api` 前缀代理：
+
+| 路由 | 成功响应 | 权限 |
+|---|---|---|
+| GET /workspaces/:workspaceId/documents | 200，未归档列表 | OWNER / EDITOR / VIEWER |
+| POST /workspaces/:workspaceId/documents | 201，安全元数据 DTO | OWNER / EDITOR |
+| GET /workspaces/:workspaceId/documents/:documentId | 200，安全元数据 DTO | OWNER / EDITOR / VIEWER |
+| PATCH /workspaces/:workspaceId/documents/:documentId | 200，重命名后的 DTO | OWNER / EDITOR |
+| POST /workspaces/:workspaceId/documents/:documentId/archive | 200，含 archivedAt 的 DTO | OWNER / EDITOR |
+
+创建和重命名只接受 `{ "title": "标题" }`：去除首尾空白后 1–200 个 Unicode 字符，禁止控制字符、未知字段。归档请求为 JSON 空对象。未登录 401、角色不足 403；非成员、跨空间、缺失和已归档资源统一 404（重复归档也是 404）。列表按 updatedAt 降序、id 升序。DTO 只含 id/workspaceId/title/createdAt/updatedAt/archivedAt；服务器生成并保留唯一随机 ydocRoomName，不作为授权凭据或公开字段。
+
+归档仅设置 archivedAt，不删除快照、成员或空间；重命名与归档采用同一空间父行锁和未归档条件，归档后不能被并发改名重新启用。详见 [ADR-0006](docs/decisions/ADR-0006-document-metadata-and-archive.md)。本阶段不提供恢复、物理删除、分页或历史版本 UI。
+
+设置独立、受保护的 `DATABASE_TEST_URL` 后执行：
+
+```bash
+pnpm test:documents
+pnpm test:e2e
+```
+
+新 API 测试已加入 CI；本轮未提交或推送，不能将本地结果当作远程 Linux CI 结果。
 
 ## 质量检查
 
@@ -248,7 +278,7 @@ M0 已验证的依赖组合：React/React DOM 19.3.1、BlockNote 0.52.1（三包
 
 ## GitHub 远程仓库
 
-GitHub 仓库 [muddyrain/weavefield](https://github.com/muddyrain/weavefield) 已有公开推送，`main` 跟踪 `origin/main`，当前本机远程使用 SSH。M1.1 已通过 PR #1 合并，M1.2 已通过 PR #2 Squash 合并（`1c7418d`），[M1.2 合并后 main CI](https://github.com/muddyrain/weavefield/actions/runs/39572948591) 为 success。该结果不代表未提交的 M1.3 改动已通过远端验收；历史报告保持原记录。
+GitHub 仓库 [muddyrain/weavefield](https://github.com/muddyrain/weavefield) 已有公开推送，`main` 跟踪 `origin/main`，当前本机远程使用 SSH。M1.1 / M1.2 / M1.3 分别通过 PR #1 / #2 / #3 合并；M1.3 合并提交为 `9327af9`，[合并后 main CI](https://github.com/muddyrain/weavefield/actions/runs/39608231601) 为 success。该历史结果不代表未提交的 M1.4 改动已通过远端验收。
 
 ```bash
 git status --short --branch

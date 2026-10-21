@@ -1,6 +1,6 @@
 # Weavefield · 技术架构说明
 
-> 状态：v0.1 设计基线；M1.1 增加数据库基础设施（验收结果见 [M1.1 报告](reports/M1.1.md)）。M1.2 认证已通过 PR #2 合并并通过 Linux CI。M1.3 已实现工作空间 API、成员管理及服务端 RBAC（本地验收见 [M1.3 报告](reports/M1.3.md)，Linux CI 待验证）。**文档 CRUD、正式协作鉴权及 PostgreSQL 协作持久化仍未实现，以下协作生产流程仍为目标设计。**
+> 状态：M1.1–M1.3 已合并且 Linux CI 通过；M1.4 文档元数据 API 与前端管理已实现，当前仅本地验证、待人工审查（见 [M1.4 报告](reports/M1.4.md)）。**正式正文编辑、协作鉴权及 PostgreSQL 协作持久化仍未实现，以下协作生产流程仍为目标设计。**
 
 ## 1. 系统分层
 
@@ -70,7 +70,20 @@ sequenceDiagram
 
 React 的 `AuthProvider` 是身份唯一来源。`WorkspacePanel` 按用户 ID 隔离实例，打开时加载列表与所选空间/成员；持久化仅为按用户分组的选择 ID，不存角色或成员信息。响应序号和组件生命周期检查丢弃旧请求；401 清理认证与受保护状态，404 移除失效选择，403 显示拒绝并重新加载真实角色。窗口打开期间提供手动、聚焦和每分钟刷新；没有成员变动推送。Nova 和 M0 编辑器保持静态演示，真实空间不关联这些共享文档。
 
-当前约束只覆盖通过该 Service 的写入口。数据库本身没有“至少一位 OWNER”的跨行约束；直接 SQL、脚本或未来 User 删除的级联可绕过，新增入口必须沿用父行锁协议。还未提供 Workspace 删除、邮件邀请、文档 CRUD、协作票据或审计日志。并发与性能取舍见 [ADR-0005](decisions/ADR-0005-workspace-membership-rbac.md)。
+当前约束只覆盖通过该 Service 的写入口。数据库本身没有“至少一位 OWNER”的跨行约束；直接 SQL、脚本或未来 User 删除的级联可绕过，新增入口必须沿用父行锁协议。还未提供 Workspace 删除、邮件邀请、协作票据或审计日志。并发与性能取舍见 [ADR-0005](decisions/ADR-0005-workspace-membership-rbac.md)。
+
+### M1.4 文档元数据数据流
+
+`DocumentsModule` 复用 AuthModule、DatabaseModule 与 WorkspacesModule 导出的 WorkspaceAccess。五个路由位于 `/workspaces/:workspaceId/documents` 下：列表 / 创建、`:documentId` 的详情 / 重命名、`:documentId/archive` 的软归档。SessionGuard 验证会话和写入来源；Controller 白名单校验标题和 ID；Service 只返回明确选择的元数据，不包含房间或认证字段。
+
+- 列表和详情在 RepeatableRead 事务中先验证成员关系，随后按 workspaceId、archivedAt=null 查询，详情再限定 documentId。列表按 updatedAt 降序、id 升序；已开始的合法读可在撤权后完成，后续请求重新鉴权。
+- 写入使用与成员管理相同的 Workspace 父行锁，ReadCommitted 下锁后重新验证角色。OWNER / EDITOR 可写，VIEWER 写入 403；非成员或错误空间 / 文档关系统一 404。
+- 创建使用 `doc:${randomUUID()}` 作为内部 room，数据库唯一约束是最终防线。P2002 房间冲突最多尝试三次，每次开启新事务；不能在已被 PostgreSQL 中止的事务中重试。耗尽返回 409。
+- 重命名和归档同时限定 workspaceId、documentId、archivedAt=null，使用条件更新并检查影响行数。归档仅写时间，不删除 DocumentSnapshot；归档后详情、重命名和重复归档均为 404。父行锁还保证排队期间被降级的写者按最新权限拒绝。
+- `WorkspacePanel` 在真实空间内挂载 `DocumentsPanel`；按用户、空间及角色隔离组件，关闭面板即卸载。请求序号和存活检查丢弃过期响应，包括旧 401，避免清理新会话。写入成功后重新获取列表，401 清理身份、403 隐藏过期写入口、404 清理失效详情。
+- UI 只显示标题、编号与时间，明确正文编辑属于 M2。真实文档不创建 Y.Doc、provider 或快照；背景 M0 演示仍使用原演示路径，关闭面板可继续体验。
+
+同空间写入串行化是沿用成员撤权协议的明确取舍；没有新增 Schema、Migration、连接池或权限框架。约束、替代方案和测试见 [ADR-0006](decisions/ADR-0006-document-metadata-and-archive.md)。
 
 ## 2. 开发与生产的安全边界
 
@@ -150,7 +163,7 @@ flowchart LR
 - Web 可静态部署；API 与 Collab 独立 Node 容器；Postgres 托管或 Docker。
 - M2 单实例 Hocuspocus 起步，不急于引入 Redis。未来多实例时评估分布式 Yjs 同步与存储一致性。
 - 日志：`traceId`、userId hash、workspaceId、roomId、请求耗时、错误码；敏感内容及 token 不进日志。
-- CI：独立 PostgreSQL 16 服务，Schema、数据库集成与升级、Auth / Workspace API 集成、类型检查、单元测试、构建及完整 Playwright E2E。M1.3 新增步骤尚待真实 Linux PR 运行。
+- CI：独立 PostgreSQL 16 服务，Schema、数据库集成与升级、Auth / Workspace / Document API 集成、类型检查、单元测试、构建及完整 Playwright E2E。M1.4 新增步骤尚待授权提交后的真实 Linux PR 运行；失败产物仍仅上传既有白名单 Selection 数值 JSON，不上传原始 trace、截图或表单内容。
 - 监控：WebSocket 活跃连接数、存储失败次数、内容写入延迟、未授权请求、堆内存和文档尺寸。
 
 ## 8. 技术风险清单
@@ -173,3 +186,4 @@ flowchart LR
 - [ADR-0004 数据库 Cookie Session](decisions/ADR-0004-database-cookie-sessions.md)
 
 - [ADR-0005 Workspace 与 Membership RBAC 及并发 OWNER 保护](decisions/ADR-0005-workspace-membership-rbac.md)
+- [ADR-0006 文档元数据、权限与软归档](decisions/ADR-0006-document-metadata-and-archive.md)

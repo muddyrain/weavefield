@@ -41,6 +41,7 @@ jobs:
       - run: pnpm --filter @weavefield/database db:test:upgrade
       - run: pnpm test:auth
       - run: pnpm test:workspaces
+      - run: pnpm test:documents
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

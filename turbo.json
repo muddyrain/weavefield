@@ -4,6 +4,7 @@
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "@weavefield/database#build": { "cache": false },
     "@weavefield/database#typecheck": { "cache": false },
+    "@weavefield/api#typecheck": { "dependsOn": ["^build"] },
     "@weavefield/shared#build": { "outputs": [] },
     "@weavefield/collab#build": { "outputs": [] },
     "typecheck": { "dependsOn": ["^typecheck"] },

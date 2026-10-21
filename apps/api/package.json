@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "nest start --watch",
+    "dev": "pnpm --filter @weavefield/database build && nest start --watch",
     "build": "nest build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "test:integration": "pnpm --filter @weavefield/api... build && node --env-file-if-exists=../../packages/database/.env test/auth.integration.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -15,7 +16,9 @@
     "@nestjs/platform-express": "^11.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.0",
-    "dotenv": "^16.4.0"
+    "dotenv": "^16.4.0",
+    "@weavefield/database": "workspace:*",
+    "express": "5.2.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",

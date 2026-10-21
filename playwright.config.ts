@@ -16,11 +16,12 @@ export default defineConfig({
       url: 'http://127.0.0.1:15173',
       env: {
         VITE_COLLAB_URL: 'ws://127.0.0.1:11234',
+        API_PROXY_TARGET: 'http://127.0.0.1:13001',
         VITE_COLLAB_DEV_TOKEN: 'm0-e2e-local-only-token',
       },
     },
     {
-      command: 'pnpm dev:api',
+      command: 'node tests/helpers/start-e2e-api.cjs',
       url: 'http://127.0.0.1:13001/health',
       env: { PORT: '13001' },
     },

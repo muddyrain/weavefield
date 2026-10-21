@@ -20,6 +20,8 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+    env:
+      DATABASE_TEST_URL: postgresql://weavefield:weavefield_ci_only@127.0.0.1:5432/weavefield_test_ci?schema=public
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -36,6 +38,8 @@ jobs:
       - run: pnpm --filter @weavefield/database db:test
         env:
           DATABASE_TEST_URL: postgresql://weavefield:weavefield_ci_only@127.0.0.1:5432/weavefield_test_ci?schema=public
+      - run: pnpm --filter @weavefield/database db:test:upgrade
+      - run: pnpm test:auth
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

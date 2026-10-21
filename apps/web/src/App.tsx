@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Activity, ArrowUpRight, BookOpenText, CheckCheck, CircleHelp, Clock3, FileText, GitBranch, Layers, LayoutGrid, Link2, Lock, PanelLeft, Plus, Search, Settings2, Sparkles, Users, Workflow } from 'lucide-react';
+import AuthPanel from './components/AuthPanel';
 import CollaborativeEditor from './components/CollaborativeEditor';
 import { currentRoom } from './lib/room';
 
@@ -60,6 +61,7 @@ export default function App() {
           <button className="icon-button" aria-label="切换侧栏" onClick={() => setSidebarOpen(v => !v)}><PanelLeft size={18}/></button>
           <div className="breadcrumb"><span>Nova 产品空间</span><span className="slash">/</span><strong>{tab==='document'?'产品需求文档':tab==='workflow'?'用户流程':'开发任务'}</strong></div>
           <div className="top-actions">
+            <AuthPanel/>
             <span className="demo-pill"><Lock size={12}/> 本地演示</span>
             <div className="share-control">
               <button className="share-btn" onClick={share} disabled={shareStatus === 'copying'} title="仅供同一台电脑的其他标签页或浏览器窗口使用，其他电脑无法访问">
@@ -79,7 +81,7 @@ export default function App() {
           {tab === 'document' ? (
             <div className="document-view">
               <div className="document-head"><p className="eyebrow">PRODUCT / REQUIREMENTS <span className="separator-dot">•</span> 01</p><h1>产品需求文档 <span className="page-emoji">✦</span></h1><p className="description">好的想法，从每个人都能理解的一份文档开始。</p><div className="doc-meta"><span><Users size={15}/> 多人协作演示</span><span><Activity size={15}/> Yjs + Hocuspocus</span><span><Lock size={15}/> localhost only</span></div></div>
-              <div className="note-banner"><Sparkles size={19}/><div><strong>欢迎来到织域的第一个 Demo</strong><p>仅在本机的两个浏览器窗口打开同一链接，即可同步编辑。工作空间登录、流程节点和任务关联将在后续里程碑加入。</p></div></div>
+              <div className="note-banner"><Sparkles size={19}/><div><strong>欢迎来到织域的第一个 Demo</strong><p>本机多窗口打开同一链接即可协同编辑。Nova 仍是演示空间，账号登录暂不授予协作权限。</p></div></div>
               <div className="editor-card"><CollaborativeEditor room={room} guestName={guestName}/></div>
             </div>
           ) : <WorkspacePlaceholder tab={tab}/>}

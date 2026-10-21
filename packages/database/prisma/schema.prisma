@@ -48,6 +48,7 @@ model Membership {
   workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@id([workspaceId, userId])
+  @@index([userId])
 }
 
 model Document {

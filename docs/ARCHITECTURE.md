@@ -1,6 +1,6 @@
 # Weavefield · 技术架构说明
 
-> 状态：v0.1 设计基线（2026-10-20）。**当前仓库仅包含开发演示的 Web/HTTP/Collab 骨架，不代表以下生产能力已实现。**
+> 状态：v0.1 设计基线；M1.1 增加数据库基础设施（验收结果见 [M1.1 报告](reports/M1.1.md)）。**认证、业务 API、PostgreSQL 协作持久化仍未实现，以下生产流程仍为目标设计。**
 
 ## 1. 系统分层
 
@@ -21,6 +21,16 @@ flowchart TB
 - **Hocuspocus：** 维护在线 Yjs 连接、传输/合并 CRDT 更新、意识状态（cursor / presence）与快照。不是第二套业务 API。
 - **PostgreSQL：** 业务关系与 Yjs 二进制持久化（目标）；`docSnapshots` 及 audit 提供恢复和排错基础。
 - **packages/shared：** 跨端 DTO 与运行时校验，禁止客户端决定权限。
+
+### M1.1 数据库基础设施
+
+- `infra/docker-compose.yml` 使用 PostgreSQL 16，仅向 `127.0.0.1` 发布端口，命名卷保存数据，`pg_isready` 健康检查配合 `up --wait`；密码从被忽略的环境文件注入。开发与验收使用不同 Compose 项目、端口和数据库，操作前需确认卷归属。
+- `packages/database/prisma/schema.prisma` 是模型定义的唯一来源；`prisma/migrations` 保存初始 SQL 与迁移历史定义。初始迁移包括 10 张现有草案表，没有删除后续模型。`db:deploy` 应用迁移，`db:generate` 将 Prisma 6.19.3 Client 生成到 `packages/database/generated/client`，生成物不入库。
+- `packages/database/src/index.ts` 将生成类型与进程内共享 `prisma` 实例统一导出，编译为 CommonJS 供后续 NestJS 使用。导入不会立即连接；各服务管理连接生命周期，并为自身进程注入 `DATABASE_URL`。不同服务进程各有连接池，不共享跨进程单例。API 当前只有 `/health`，没有提前导入数据库或增加业务接口。
+- `Membership` 用 `(workspaceId, userId)` 复合主键防止重复成员；新增 `userId` 索引补足按用户查询和外键删除检查。Document 的 `(workspaceId, updatedAt)` 索引用于空间内文档列表。删除空间级联删除成员关系、文档及其快照；删除用户只删除成员关系，不删除工作空间。
+- 数据库外键和唯一约束验证关系完整性，不能替代授权。Workspace 没有自动生成 owner 的数据库约束，后续业务必须通过事务保证空间与 owner 成员一起创建。邮件大小写归一化、角色权限与跨租户对象检查尚未实现。
+- DocumentSnapshot（`Bytes`）、Board、BoardNode、BoardEdge、Task、EntityLink 当前仅有表结构。BoardEdge 的端点 ID、Task 的 assigneeId 和 EntityLink 的多态引用尚无目标实体外键；启用这些业务前须验证对象存在、归属及删除策略。本轮未把普通二进制字段读写等同于 Yjs PostgreSQL 持久化。
+- `packages/database/test/integration.cjs` 在显式指定的本机测试库验证真实迁移、CRUD、约束、事务和级联删除；测试不执行 reset，也不重启或清空用户已有数据库。服务重启持久化需在保留同一卷的情况下另行精确比较已提交记录。
 
 ## 2. 开发与生产的安全边界
 

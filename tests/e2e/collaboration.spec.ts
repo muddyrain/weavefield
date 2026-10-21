@@ -20,6 +20,21 @@ async function documentText(editor: Locator) {
   });
 }
 
+async function moveCaretToEnd(editor: Locator) {
+  await editor.focus();
+  await editor.evaluate(element => {
+    // 跳过不可编辑的协作光标装饰，避免各平台 End 键和元素边界定位的差异。
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+      acceptNode: node => node.parentElement?.closest('[contenteditable="false"]')
+        ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    let lastText: Node | null = null;
+    while (walker.nextNode()) lastText = walker.currentNode;
+    if (!lastText) throw new Error('Cannot place caret: editor has no editable text');
+    window.getSelection()!.collapse(lastText, lastText.textContent!.length);
+  });
+}
+
 async function startCollab() {
   server = spawn(process.execPath, [
     '--import', pathToFileURL(path.join(project, 'apps/collab/node_modules/tsx/dist/loader.mjs')).href,
@@ -110,8 +125,9 @@ for (const width of [1440, 1280]) {
         expect(control.right).toBeLessThanOrEqual(metrics.main.right);
       }
       expect(metrics.documentWidth).toBeLessThanOrEqual(width);
-      // 短文档不应因为错误换行产生几千像素的纵向滚动。
-      expect(metrics.documentHeight).toBeLessThanOrEqual(metrics.viewport.height + 1);
+      // 允许跨平台字体度量和子像素舍入造成的少量高度差异；
+      // 短文档仍不应因为错误换行产生几千像素的纵向滚动。
+      expect(metrics.documentHeight).toBeLessThanOrEqual(metrics.viewport.height + 8);
       await expect(editor).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`${state}.png`), fullPage: true });
       return metrics;
@@ -159,26 +175,36 @@ test('two windows sync, reconnect and restore binary state after a server restar
   await expect(pageB.locator('.editor-status')).toContainText('已同步');
   await editorA.fill('Window A 织域');
   await expect.poll(() => documentText(editorB)).toBe('Window A 织域');
-  await editorB.press('End');
+  await moveCaretToEnd(editorB);
   await editorB.pressSequentially(' + Window B');
-  await expect.poll(() => documentText(editorA)).toBe('Window A 织域 + Window B');
+  const syncedText = 'Window A 织域 + Window B';
+  await expect.poll(() => documentText(editorB)).toBe(syncedText);
+  await expect.poll(() => documentText(editorA)).toBe(syncedText);
   await pageB.reload();
-  await expect.poll(() => documentText(editorB)).toBe('Window A 织域 + Window B');
+  await expect.poll(() => documentText(editorB)).toBe(syncedText);
 
   const snapshot = path.join(storage, '.local/snapshots/doc-m0-e2e.bin');
   await expect.poll(() => readFile(snapshot).then(bytes => bytes.length).catch(() => 0)).toBeGreaterThan(0);
   const saved = await readFile(snapshot);
   await stopCollab();
   await expect(pageA.locator('.editor-status')).toContainText('连接中');
-  await editorA.press('End');
+  await expect(pageB.locator('.editor-status')).toContainText('连接中');
+  await moveCaretToEnd(editorA);
   await editorA.pressSequentially(' offline-A');
-  await editorB.press('End');
+  await expect.poll(() => documentText(editorA)).toBe(`${syncedText} offline-A`);
+  await moveCaretToEnd(editorB);
   await editorB.pressSequentially(' offline-B');
+  await expect.poll(() => documentText(editorB)).toBe(`${syncedText} offline-B`);
   await startCollab();
   await expect(editorA).toContainText('offline-B');
   await expect(editorB).toContainText('offline-A');
   await expect.poll(async () => (await documentText(editorA)) === (await documentText(editorB))).toBe(true);
   const merged = await documentText(editorA);
+  // 并发追加允许任一 CRDT 合并顺序，但原文和两个片段都必须完整。
+  expect([
+    `${syncedText} offline-A offline-B`,
+    `${syncedText} offline-B offline-A`,
+  ]).toContain(merged);
   // Wait for the debounce write, then remove every in-memory copy before restoring.
   await expect.poll(async () => (await readFile(snapshot)).equals(saved)).toBe(false);
   await Promise.all([contextA.close(), contextB.close()]);

@@ -12,8 +12,9 @@ Weavefield 是一个面向 2–8 人小团队的实时协作工作台：**多人
 - [x] NestJS `/health` 基础模块、Hocuspocus 本地开发服务
 - [x] M0 依赖安装、锁文件、类型检查、单元测试与构建验证（Node 22 LTS）
 - [x] M1.1 PostgreSQL 16 / Prisma 基础设施已通过 PR #1 合入 main，Linux CI 已通过（见 [M1.1 报告](docs/reports/M1.1.md)）
-- [x] M1.2 密码认证、数据库 Session 与 React 登录交互本地验收通过，待人工审查（见 [M1.2 报告](docs/reports/M1.2.md)）
-- [ ] **工作空间 CRUD、租户权限、Yjs PostgreSQL 持久化尚未实现**；登录不会授予 M0 协作权限
+- [x] M1.2 密码认证、数据库 Session 与 React 登录交互已通过 PR #2 合入 main，Linux CI 已通过（见 [M1.2 报告](docs/reports/M1.2.md)）
+- [x] M1.3 工作空间、成员管理与服务端 RBAC 本地验收通过，待人工审查（见 [M1.3 报告](docs/reports/M1.3.md)）
+- [ ] **文档 CRUD、正式协作鉴权及 Yjs PostgreSQL 持久化尚未实现**；Workspace 角色不会授予 M0 协作权限
 - [x] GitHub 仓库已创建，本地 `origin` 已配置
 - [x] M0 及后续测试、演示体验修复已推送，Linux GitHub Actions 已通过
 
@@ -46,7 +47,7 @@ weavefield/
 │  ├─ CODEX_TASKS.md
 │  └─ decisions/
 ├─ infra/                  # Docker Compose
-├─ .github/workflows/      # CI 草案
+├─ .github/workflows/      # PostgreSQL、API、单元及浏览器 CI
 ├─ AGENTS.md               # Codex 项目约束
 └─ package.json
 ```
@@ -188,6 +189,36 @@ pnpm test:e2e
 
 Playwright 自动构建 API，并在端口 13001 启动连接测试库的真实 NestJS，Web 为 15173。认证测试通过真实 API 注册/登录，验证刷新、退出、会话失效、两个浏览器身份隔离及移动端反馈。原有 8 项 M0 测试继续执行。CI 保留原 PostgreSQL 检查，并新增升级与认证 API 检查。本地通过不等于新 Linux CI 已通过。
 
+## M1.3：工作空间与成员
+
+登录后点击右上角的当前用户入口，打开“我的工作空间”。列表只包含当前账号加入的真实空间，可创建和切换空间；选择按账号保存在本机，刷新后通过 API 重新验证。退出、Session 失效或确认已被移除时，清理受保护状态及失效选择。窗口打开时会在重新聚焦、每分钟或手动刷新时重新加载；成员权限变更不通过 WebSocket 推送，所有操作仍以服务端即时检查为准。
+
+OWNER 可以修改空间名称，按规范化邮箱添加已注册账号、调整角色及移除成员；这不是邮件邀请。EDITOR / VIEWER 可读取空间和成员，无管理权限。最后一位 OWNER 不能退出或降级；有其他 OWNER 时允许 OWNER 自己退出或降级。尚未提供空间删除、成员搜索或分页。
+
+| 接口 | 成功结果 / 权限 |
+|---|---|
+| POST /workspaces | 201；name、slug；事务创建空间和当前用户的 OWNER Membership |
+| GET /workspaces | 200；只列出当前 Session 用户的空间及角色 |
+| GET /workspaces/:workspaceId | 200；成员可读 |
+| PATCH /workspaces/:workspaceId | 200；仅 OWNER，可修改 name |
+| GET /workspaces/:workspaceId/members | 200；成员可读；只返回公开用户资料和角色 |
+| POST /workspaces/:workspaceId/members | 201；仅 OWNER；email、role（省略时为 VIEWER） |
+| PATCH /workspaces/:workspaceId/members/:userId | 200；仅 OWNER；role |
+| DELETE /workspaces/:workspaceId/members/:userId | 204；仅 OWNER；JSON 空对象 |
+
+name 为 1–80 个字符，不含控制字符；slug 为 3–64 位小写字母、数字或连字符，创建后暂不修改。写请求使用 JSON、精确 Origin 和 `X-Weavefield-Request: 1`，沿用 M1.2 的 Cookie 与 4 KiB 输入限制。未登录 401；非成员与不存在空间统一 404；成员越权 403；重复 slug / 成员及最后 OWNER 保护为 409。客户端不能设置创建者、当前用户 ID 或伪造角色。
+
+复用现有 Workspace、Membership 和 WorkspaceRole，无新 Migration。所有空间写事务先锁定同一 Workspace 行，再重新验证操作者、目标成员和 OWNER 数量，防止并发降级或退出令空间失去 OWNER。约束及直接 SQL / 用户删除的风险见 [ADR-0005](docs/decisions/ADR-0005-workspace-membership-rbac.md)。
+
+真实空间面板明确独立于 Nova / M0 文档。切换真实空间不会切换或私有化演示文档，也不提供 Hocuspocus 正式鉴权；关闭面板继续使用原本的 localhost 协作 Demo。
+
+```bash
+pnpm test:workspaces
+pnpm test:e2e
+```
+
+两项均需上述隔离 PostgreSQL 16 测试库。API 测试通过真实 HTTP 和数据库验证租户隔离、角色、输入、会话、CSRF 与并发 OWNER 不变量；CI 已加入同一检查。浏览器测试覆盖创建、切换、成员管理、刷新恢复、失效权限及移动端反馈。M1.3 当前仅完成 macOS 本地验收，未提交、未推送，Linux CI 待后续授权验证。
+
 ## 质量检查
 
 ```bash
@@ -217,7 +248,7 @@ M0 已验证的依赖组合：React/React DOM 19.3.1、BlockNote 0.52.1（三包
 
 ## GitHub 远程仓库
 
-GitHub 仓库 [muddyrain/weavefield](https://github.com/muddyrain/weavefield) 已有公开推送，`main` 跟踪 `origin/main`，当前本机远程使用 SSH。M0 与后续修复已通过 Linux CI；[M1.1 开发前的 main CI](https://github.com/muddyrain/weavefield/actions/runs/39539876436) 为 success。该结果不代表未提交的 M1.1 改动已通过远端验收；M0 历史报告保持原记录。
+GitHub 仓库 [muddyrain/weavefield](https://github.com/muddyrain/weavefield) 已有公开推送，`main` 跟踪 `origin/main`，当前本机远程使用 SSH。M1.1 已通过 PR #1 合并，M1.2 已通过 PR #2 Squash 合并（`1c7418d`），[M1.2 合并后 main CI](https://github.com/muddyrain/weavefield/actions/runs/39572948591) 为 success。该结果不代表未提交的 M1.3 改动已通过远端验收；历史报告保持原记录。
 
 ```bash
 git status --short --branch

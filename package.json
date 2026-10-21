@@ -17,7 +17,8 @@
     "test:e2e": "pnpm --filter @weavefield/api... build && node --env-file-if-exists=packages/database/.env node_modules/@playwright/test/cli.js test",
     "db:generate": "pnpm --filter @weavefield/database db:generate",
     "db:migrate": "pnpm --filter @weavefield/database db:migrate",
-    "test:auth": "pnpm --filter @weavefield/api test:integration"
+    "test:auth": "pnpm --filter @weavefield/api test:integration",
+    "test:workspaces": "pnpm --filter @weavefield/api test:workspaces"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

@@ -40,6 +40,7 @@ jobs:
           DATABASE_TEST_URL: postgresql://weavefield:weavefield_ci_only@127.0.0.1:5432/weavefield_test_ci?schema=public
       - run: pnpm --filter @weavefield/database db:test:upgrade
       - run: pnpm test:auth
+      - run: pnpm test:workspaces
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

@@ -13,7 +13,7 @@ export async function createApplication() {
     response.setHeader('Cache-Control', 'no-store');
     response.status(status).json({ statusCode: status, message: '请求体必须是有效且不超过 4 KiB 的 JSON' });
   });
-  app.enableCors({ origin: config.origin, credentials: true, methods: ['GET', 'POST', 'OPTIONS'],
+  app.enableCors({ origin: config.origin, credentials: true, methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'X-Weavefield-Request'] });
   app.enableShutdownHooks();
   return app;

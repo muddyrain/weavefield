@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "start": "node dist/main.js",
-    "test:integration": "pnpm --filter @weavefield/api... build && node --env-file-if-exists=../../packages/database/.env test/auth.integration.cjs"
+    "test:integration": "pnpm --filter @weavefield/api... build && node --env-file-if-exists=../../packages/database/.env test/auth.integration.cjs",
+    "test:workspaces": "pnpm --filter @weavefield/api... build && node --env-file-if-exists=../../packages/database/.env test/workspaces.integration.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

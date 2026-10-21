@@ -33,3 +33,20 @@
 .auth-error{margin:0;color:#a12839;font-size:13px;line-height:1.6}
 .auth-switch{margin-top:14px;padding-left:0}
 @media(max-width:600px){.topbar{gap:8px;padding:0 10px}.breadcrumb{display:none}.top-actions{gap:8px}.account-name{max-width:55px}}
+
+.workspace-dialog{width:min(960px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;border:1px solid #e2e6f0;border-radius:14px;padding:26px;color:#25304c;background:#fff}
+.workspace-dialog::backdrop{background:#12172699}
+.workspace-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.workspace-dialog-head h2{margin:8px 0;font-size:24px}.workspace-dialog-head small{color:#63708a}
+.workspace-dialog-head>button{border:0;background:none;font-size:26px;color:#4d5873}
+.workspace-boundary{padding:12px 14px;border-radius:8px;background:#f0efff;color:#5146aa;font-size:13px;line-height:1.8}
+.workspace-dialog p{font-size:13px;line-height:1.8}.workspace-dialog h3{font-size:16px;margin:18px 0 12px}
+.workspace-grid{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:24px;margin-top:18px}
+.workspace-dialog form,.workspace-dialog label{display:flex;flex-direction:column;gap:8px}.workspace-dialog form{gap:12px;margin-top:18px}
+.workspace-dialog label{font-size:12px;font-weight:600}.workspace-dialog input,.workspace-dialog select{width:100%;min-width:0;border:1px solid #aab3c6;border-radius:7px;padding:9px;font:inherit;background:#fff;color:#25304c}
+.workspace-dialog small{font-size:11px;line-height:1.6;overflow-wrap:anywhere}.workspace-dialog :focus-visible{outline:3px solid #a4abff;outline-offset:2px}
+.workspace-primary,.workspace-secondary,.workspace-remove{border:1px solid #e2e6f0;border-radius:7px;padding:9px 11px;font-size:12px;background:#fff;color:#5146aa}
+.workspace-primary{background:#5146aa;color:#fff;border-color:#5146aa}.workspace-remove{color:#a12839}.workspace-dialog button:disabled{opacity:.6;cursor:wait}
+.workspace-members{list-style:none;margin:0;padding:0}.workspace-members li{padding:14px 0;border-bottom:1px solid #edf0f6;display:flex;justify-content:space-between;gap:12px;font-size:12px}
+.workspace-members li>div:first-child{min-width:0;display:flex;flex-direction:column;gap:6px}.workspace-members strong{overflow-wrap:anywhere}.workspace-member-actions{flex-shrink:0;max-width:55%}.workspace-member-actions form{margin:0 0 8px;display:flex;flex-direction:row;flex-wrap:wrap;gap:6px}
+@media(max-width:700px){.workspace-dialog{padding:18px}.workspace-grid{grid-template-columns:minmax(0,1fr)}.workspace-members li{flex-direction:column}.workspace-member-actions{max-width:100%}}

@@ -24,8 +24,23 @@ model User {
   id          String       @id @default(cuid())
   email       String       @unique
   displayName String
+  emailCanonical String? @unique
+  passwordHash String?
   createdAt   DateTime     @default(now())
   memberships Membership[]
+  sessions    Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Workspace {

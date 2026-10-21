@@ -14,9 +14,10 @@
     "build": "turbo build",
     "typecheck": "turbo typecheck && tsc --noEmit -p tsconfig.e2e.json",
     "test": "turbo test",
-    "test:e2e": "playwright test",
+    "test:e2e": "pnpm --filter @weavefield/api... build && node --env-file-if-exists=packages/database/.env node_modules/@playwright/test/cli.js test",
     "db:generate": "pnpm --filter @weavefield/database db:generate",
-    "db:migrate": "pnpm --filter @weavefield/database db:migrate"
+    "db:migrate": "pnpm --filter @weavefield/database db:migrate",
+    "test:auth": "pnpm --filter @weavefield/api test:integration"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

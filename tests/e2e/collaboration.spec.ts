@@ -95,7 +95,12 @@ for (const width of [1440, 1280]) {
   test(`sidebar layout stays usable at ${width}px through collapse, expand and refresh`, async ({ page }, testInfo) => {
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
-    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    page.on('console', message => {
+      // 未登录的 /auth/me 按协议返回 401；其他控制台错误仍必须使布局测试失败。
+      const anonymousSession = new URL(message.location().url || page.url()).pathname === '/api/auth/me'
+        && /^Failed to load resource:.*401/.test(message.text());
+      if (message.type() === 'error' && !anonymousSession) errors.push(message.text());
+    });
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/?doc=sidebar-layout-${width}`);
     await expect(page.locator('.editor-status')).toContainText('已同步');

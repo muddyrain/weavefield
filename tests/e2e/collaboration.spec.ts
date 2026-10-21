@@ -84,7 +84,7 @@ async function layoutMetrics(page: Page) {
       viewport: { width: innerWidth, height: innerHeight },
       main: rect('.main-panel'), sidebar: rect('.sidebar'), topbar: rect('.topbar'),
       titleLines: range.getClientRects().length,
-      controls: ['.icon-button', '.breadcrumb', '.demo-pill', '.avatar-stack', '.share-btn'].map(rect),
+      controls: ['.icon-button', '.breadcrumb', '.demo-pill', '.share-btn'].map(rect),
       documentWidth: document.documentElement.scrollWidth,
       documentHeight: document.documentElement.scrollHeight,
     };
@@ -99,6 +99,8 @@ for (const width of [1440, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/?doc=sidebar-layout-${width}`);
     await expect(page.locator('.editor-status')).toContainText('已同步');
+    await expect(page.locator('.avatar-stack')).toHaveCount(0);
+    await expect(page.locator('.demo-pill')).toHaveText('本地演示');
     await page.evaluate(() => document.fonts.ready);
     const editor = page.locator('[contenteditable="true"]').first();
     const toggle = page.getByRole('button', { name: '切换侧栏' });
@@ -156,6 +158,24 @@ for (const width of [1440, 1280]) {
   });
 }
 
+test('unavailable local collab shows recovery guidance and clears it after syncing', async ({ page }, testInfo) => {
+  await stopCollab();
+  try {
+    await page.goto('/?doc=connection-guidance');
+    await expect(page.locator('.editor-status')).toHaveAttribute('data-state', 'disconnected');
+    await expect(page.locator('.editor-status')).toContainText('连接失败，正在重试');
+    await expect(page.locator('.editor-status')).not.toContainText('已同步');
+    await expect(page.locator('.editor-connection-help')).toContainText('Web 与 Collab 已同时启动');
+    await expect(page.locator('[contenteditable="true"]').first()).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('connection-unavailable.png'), fullPage: true });
+  } finally {
+    await startCollab();
+  }
+  await expect(page.locator('.editor-status')).toHaveAttribute('data-state', 'synced');
+  await expect(page.locator('.editor-status')).toContainText('已同步');
+  await expect(page.locator('.editor-connection-help')).toHaveCount(0);
+});
+
 test('two windows sync, reconnect and restore binary state after a server restart', async ({ browser, request }) => {
   const health = await request.get('http://127.0.0.1:13001/health');
   expect(health.ok()).toBe(true);
@@ -187,8 +207,8 @@ test('two windows sync, reconnect and restore binary state after a server restar
   await expect.poll(() => readFile(snapshot).then(bytes => bytes.length).catch(() => 0)).toBeGreaterThan(0);
   const saved = await readFile(snapshot);
   await stopCollab();
-  await expect(pageA.locator('.editor-status')).toContainText('连接中');
-  await expect(pageB.locator('.editor-status')).toContainText('连接中');
+  await expect(pageA.locator('.editor-status')).toContainText('连接失败，正在重试');
+  await expect(pageB.locator('.editor-status')).toContainText('连接失败，正在重试');
   await moveCaretToEnd(editorA);
   await editorA.pressSequentially(' offline-A');
   await expect.poll(() => documentText(editorA)).toBe(`${syncedText} offline-A`);

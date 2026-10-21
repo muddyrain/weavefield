@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -22,17 +22,49 @@ async function documentText(editor: Locator) {
 
 async function moveCaretToEnd(editor: Locator) {
   await editor.focus();
-  await editor.evaluate(element => {
-    // 跳过不可编辑的协作光标装饰，避免各平台 End 键和元素边界定位的差异。
+  const result = await editor.evaluate(element => {
+    // 只选择正文；协作装饰里的 U+2060 和访客标签不属于可输入内容。
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
-      acceptNode: node => node.parentElement?.closest('[contenteditable="false"]')
+      acceptNode: node => !node.parentElement?.closest('.bn-inline-content')
+        || node.parentElement.closest('.bn-collaboration-cursor__base, [contenteditable="false"]')
+        || !node.textContent?.replace(/[\u200b\u2060\ufeff]/g, '')
         ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
     });
     let lastText: Node | null = null;
     while (walker.nextNode()) lastText = walker.currentNode;
     if (!lastText) throw new Error('Cannot place caret: editor has no editable text');
-    window.getSelection()!.collapse(lastText, lastText.textContent!.length);
+    // Tiptap 在编辑器根元素上公开 editor；这里只操作 Selection，不写入文档。
+    const { editor: tiptap } = element as HTMLElement & { editor: {
+      commands: { setTextSelection(position: number): boolean };
+      view: {
+        posAtDOM(node: Node, offset: number): number;
+        state: { selection: { anchor: number; head: number } };
+      };
+    } };
+    const offset = lastText.textContent!.length;
+    const position = tiptap.view.posAtDOM(lastText, offset);
+    // 直接 collapse 只更新 DOM，selectionchange 前模型仍可能在段首。
+    const applied = tiptap.commands.setTextSelection(position);
+    const selection = window.getSelection();
+    return {
+      applied,
+      focused: document.activeElement === element,
+      collapsed: selection?.isCollapsed,
+      anchorAtEnd: selection?.anchorNode === lastText && selection.anchorOffset === offset,
+      focusAtEnd: selection?.focusNode === lastText && selection.focusOffset === offset,
+      modelAtEnd: tiptap.view.state.selection.anchor === position && tiptap.view.state.selection.head === position,
+      positions: {
+        expectedOffset: offset, anchorOffset: selection?.anchorOffset, focusOffset: selection?.focusOffset,
+        expectedPosition: position, modelAnchor: tiptap.view.state.selection.anchor, modelHead: tiptap.view.state.selection.head,
+      },
+    };
   });
+  // 只附加布尔值和位置数字；CI 可上传它们，不包含正文、DOM、网络或凭据。
+  const diagnostics = test.info().outputPath(`caret-diagnostics-${test.info().attachments.length}.json`);
+  await writeFile(diagnostics, JSON.stringify(result));
+  await test.info().attach('caret-diagnostics', { path: diagnostics, contentType: 'application/json' });
+  const { positions: _positions, ...checks } = result;
+  expect(checks).toEqual({ applied: true, focused: true, collapsed: true, anchorAtEnd: true, focusAtEnd: true, modelAtEnd: true });
 }
 
 async function startCollab() {
@@ -199,9 +231,11 @@ test('two windows sync, reconnect and restore binary state after a server restar
   await expect(pageA.locator('.editor-status')).toContainText('已同步');
   await expect(pageB.locator('.editor-status')).toContainText('已同步');
   await editorA.fill('Window A 织域');
+  await expect.poll(() => documentText(editorA)).toBe('Window A 织域');
   await expect.poll(() => documentText(editorB)).toBe('Window A 织域');
   await moveCaretToEnd(editorB);
-  await editorB.pressSequentially(' + Window B');
+  // 使用当前焦点发送真实键盘事件，避免 Locator 输入再次调用 focus。
+  await pageB.keyboard.type(' + Window B');
   const syncedText = 'Window A 织域 + Window B';
   await expect.poll(() => documentText(editorB)).toBe(syncedText);
   await expect.poll(() => documentText(editorA)).toBe(syncedText);
@@ -215,10 +249,10 @@ test('two windows sync, reconnect and restore binary state after a server restar
   await expect(pageA.locator('.editor-status')).toContainText('连接失败，正在重试');
   await expect(pageB.locator('.editor-status')).toContainText('连接失败，正在重试');
   await moveCaretToEnd(editorA);
-  await editorA.pressSequentially(' offline-A');
+  await pageA.keyboard.type(' offline-A');
   await expect.poll(() => documentText(editorA)).toBe(`${syncedText} offline-A`);
   await moveCaretToEnd(editorB);
-  await editorB.pressSequentially(' offline-B');
+  await pageB.keyboard.type(' offline-B');
   await expect.poll(() => documentText(editorB)).toBe(`${syncedText} offline-B`);
   await startCollab();
   await expect(editorA).toContainText('offline-B');

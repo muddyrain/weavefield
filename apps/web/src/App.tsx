@@ -21,11 +21,21 @@ function WorkspacePlaceholder({ tab }: { tab: Exclude<Tab, 'document'> }) {
 export default function App() {
   const [tab, setTab] = useState<Tab>('document');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [shareStatus, setShareStatus] = useState<'idle' | 'copying' | 'success' | 'error'>('idle');
   const room = useMemo(() => {
     try { return currentRoom(window.location.search); }
     catch { return 'doc:demo-project'; }
   }, []);
-  const share = () => void navigator.clipboard?.writeText(window.location.href);
+  const share = async () => {
+    setShareStatus('copying');
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(window.location.href);
+      setShareStatus('success');
+    } catch {
+      setShareStatus('error');
+    }
+  };
 
   return (
     <div className={`app-frame ${sidebarOpen ? '' : 'sidebar-hidden'}`}>
@@ -49,13 +59,27 @@ export default function App() {
         <header className="topbar">
           <button className="icon-button" aria-label="切换侧栏" onClick={() => setSidebarOpen(v => !v)}><PanelLeft size={18}/></button>
           <div className="breadcrumb"><span>Nova 产品空间</span><span className="slash">/</span><strong>{tab==='document'?'产品需求文档':tab==='workflow'?'用户流程':'开发任务'}</strong></div>
-          <div className="top-actions"><span className="demo-pill"><Lock size={12}/> 本地演示</span><div className="avatar-stack"><i>W</i><i>N</i></div><button className="share-btn" onClick={share}><Link2 size={15}/> 复制协作链接</button></div>
+          <div className="top-actions">
+            <span className="demo-pill"><Lock size={12}/> 本地演示</span>
+            <div className="share-control">
+              <button className="share-btn" onClick={share} disabled={shareStatus === 'copying'} title="仅供同一台电脑的其他标签页或浏览器窗口使用，其他电脑无法访问">
+                <Link2 size={15}/> {shareStatus === 'copying' ? '复制中…' : '复制本地演示链接'}
+              </button>
+              {(shareStatus === 'success' || shareStatus === 'error') && (
+                <p className="share-feedback" role="status">
+                  {shareStatus === 'success'
+                    ? '已复制本地演示链接，仅供这台电脑的其他标签页或浏览器窗口使用。'
+                    : '复制失败，请手动复制地址栏链接；该链接仅限这台电脑使用。'}
+                </p>
+              )}
+            </div>
+          </div>
         </header>
         <section className="workspace-body">
           {tab === 'document' ? (
             <div className="document-view">
               <div className="document-head"><p className="eyebrow">PRODUCT / REQUIREMENTS <span className="separator-dot">•</span> 01</p><h1>产品需求文档 <span className="page-emoji">✦</span></h1><p className="description">好的想法，从每个人都能理解的一份文档开始。</p><div className="doc-meta"><span><Users size={15}/> 多人协作演示</span><span><Activity size={15}/> Yjs + Hocuspocus</span><span><Lock size={15}/> localhost only</span></div></div>
-              <div className="note-banner"><Sparkles size={19}/><div><strong>欢迎来到织域的第一个 Demo</strong><p>打开两个浏览器窗口使用同一个链接，在文档内输入内容，就能体验同步编辑。工作空间登录、流程节点和任务关联将在后续里程碑加入。</p></div></div>
+              <div className="note-banner"><Sparkles size={19}/><div><strong>欢迎来到织域的第一个 Demo</strong><p>仅在本机的两个浏览器窗口打开同一链接，即可同步编辑。工作空间登录、流程节点和任务关联将在后续里程碑加入。</p></div></div>
               <div className="editor-card"><CollaborativeEditor room={room} guestName={guestName}/></div>
             </div>
           ) : <WorkspacePlaceholder tab={tab}/>}

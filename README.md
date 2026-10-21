@@ -9,11 +9,12 @@ Weavefield 是一个面向 2–8 人小团队的实时协作工作台：**多人
 - [x] 独立 Git 仓库结构、PRD、架构、数据模型、ADR、开发路线图、Codex 任务清单
 - [x] `pnpm` workspace / Turborepo 工程配置
 - [x] React + Vite Web 初始界面与 BlockNote/Hocuspocus **本地协作演示代码**
-- [x] NestJS `/health` 基础模块、Hocuspocus 本地开发服务、Prisma 数据模型草案
+- [x] NestJS `/health` 基础模块、Hocuspocus 本地开发服务
 - [x] M0 依赖安装、锁文件、类型检查、单元测试与构建验证（Node 22 LTS）
-- [ ] **正式认证、数据库持久化、工作空间 CRUD 均尚未实现**
+- [x] M1.1 PostgreSQL 16 / Prisma 初始迁移与数据库包已通过本地验收，待人工审查（见 [M1.1 报告](docs/reports/M1.1.md)）
+- [ ] **正式认证、工作空间 CRUD、Yjs PostgreSQL 持久化尚未实现**；M0 协作仍使用本地二进制文件
 - [x] GitHub 仓库已创建，本地 `origin` 已配置
-- [ ] 待审查的 M0 改动尚未提交，首次公开推送尚未执行；写入认证仍需验证
+- [x] M0 及后续测试、演示体验修复已推送，Linux GitHub Actions 已通过
 
 > ⚠️ `apps/collab` 的默认实现**仅用于 localhost 的开发验证**：静态开发令牌、文件系统 Yjs 快照。强制拒绝在 `NODE_ENV=production` 下启动。部署前必须实现服务端鉴权与访问控制，将快照迁移到 PostgreSQL（见架构文档和路线图）。
 
@@ -34,7 +35,7 @@ weavefield/
 │  ├─ api/                 # NestJS HTTP API
 │  └─ collab/              # Hocuspocus + Yjs 开发协作服务
 ├─ packages/
-│  ├─ database/            # Prisma schema (DB 接入 M1/M2)
+│  ├─ database/            # Prisma schema、迁移、统一服务端 Client 入口
 │  └─ shared/              # 公共协议、校验
 ├─ docs/
 │  ├─ PRD.md
@@ -51,7 +52,7 @@ weavefield/
 
 ## 本地运行
 
-**环境：Node.js 22 LTS、pnpm 10.18.0、Docker（可选）。** 项目以实际验证过的 **Node.js 22.23.3** 为开发与 CI 基准：`.nvmrc` 固定该版本，CI 从同一文件读取；`package.json` 的 `engines.node` 为 `>=22.23.3 <23`，`packageManager` 固定 `pnpm@10.18.0`。系统 Node 26 不在项目声明的支持范围内；engines 是版本声明，不会自动切换运行时。Web `5173`、API `3001`、协作 WebSocket `1234`。
+**环境：Node.js 22 LTS、pnpm 10.18.0、Docker（M0 可选，M1.1 数据库验收必需）。** 项目以实际验证过的 **Node.js 22.23.3** 为开发与 CI 基准：`.nvmrc` 固定该版本，CI 从同一文件读取；`package.json` 的 `engines.node` 为 `>=22.23.3 <23`，`packageManager` 固定 `pnpm@10.18.0`。系统 Node 26 不在项目声明的支持范围内；engines 是版本声明，不会自动切换运行时。Web `5173`、API `3001`、协作 WebSocket `1234`。
 
 ### Windows 开发环境准备
 
@@ -86,14 +87,68 @@ pnpm dev
 
 Windows 文件名不能直接使用房间名里的冒号，因此磁盘使用 `doc-<id>.bin`，WebSocket 房间名仍为 `doc:<id>`。旧演示的 `doc:<id>.bin` 不会自动迁移；如有旧数据，应先备份。Yjs 二进制格式保持不变。
 
-启动 PostgreSQL（后续工作空间/用户模型使用，当前演示无需连接）：
+### M1.1：PostgreSQL 16 与 Prisma
+
+先安装并启动 [Docker Desktop](https://docs.docker.com/desktop/)。以下命令在仓库根目录执行，Mac 使用终端，Windows 使用 PowerShell。确认 `docker info` 成功，`docker compose version` 可用；M0 编辑器演示仍可不启动数据库。
+
+Mac 复制本地配置：
 
 ```bash
-docker compose -f infra/docker-compose.yml up -d
+cp infra/.env.example infra/.env
 cp packages/database/.env.example packages/database/.env
-pnpm --filter @weavefield/database db:generate
-pnpm --filter @weavefield/database db:migrate
 ```
+
+Windows 复制本地配置：
+
+```powershell
+Copy-Item infra/.env.example infra/.env
+Copy-Item packages/database/.env.example packages/database/.env
+```
+
+只在目标文件不存在时复制，已有配置请手动核对。两个文件均被 Git 忽略。`infra/.env` 的 `POSTGRES_*` 用于 Compose，数据库包 `.env` 的 `DATABASE_URL` 用于 Prisma CLI，两者账号、密码、库名、端口必须匹配；URL 中密码的特殊字符需要百分号编码。示例凭据只适用于隔离的本地开发，不得用于公网或生产环境。
+
+示例固定开发项目名 `weavefield-m11-dev`。已有 Compose 数据时先核对项目名和卷标签，沿用其归属；更换项目名会使用另一个卷。先检查已有容器与卷的项目标签，确认归属；如果本机 `5432` 已有数据库，修改 `POSTGRES_PORT` 和 `DATABASE_URL` 为一个空闲端口，不要停止或迁移其他项目的服务。
+
+```bash
+docker ps -a
+docker volume ls
+docker compose --env-file infra/.env -p weavefield-m11-dev -f infra/docker-compose.yml config --volumes
+docker compose --env-file infra/.env -p weavefield-m11-dev -f infra/docker-compose.yml up -d --wait postgres
+docker compose --env-file infra/.env -p weavefield-m11-dev -f infra/docker-compose.yml ps
+docker compose --env-file infra/.env -p weavefield-m11-dev -f infra/docker-compose.yml exec -T postgres pg_isready -U weavefield -d weavefield
+pnpm db:generate
+pnpm --filter @weavefield/database db:validate
+pnpm --filter @weavefield/database db:deploy
+pnpm --filter @weavefield/database db:status
+```
+
+`pg_isready` 中账号和库名按本地配置调整。容器仅监听 `127.0.0.1`，使用命名卷保存数据。已有卷的账号/密码不会因修改 `.env` 自动更新。初始迁移包含全部 10 张草案表；User / Workspace / Membership / Document 是 M1 数据基础，DocumentSnapshot、Board、BoardNode、BoardEdge、Task、EntityLink 暂只有结构，没有对应业务功能。非空且无迁移历史的数据库需先评估、备份和制定基线方案，不能直接套用初始迁移，更不能 reset。
+
+`db:deploy` 只应用已审查的迁移，不生成迁移，也不生成 Client；重复部署不会重复应用同一迁移。日后改 Schema 时，在独立开发库使用 `pnpm --filter @weavefield/database db:migrate --name <change>` 生成并审查 SQL；开发迁移需要 shadow database，不要指向共享库。不要修改已应用的迁移。
+
+#### 独立数据库集成测试
+
+复制 `infra/.env.example` 为 `infra/.env.test`，将 `POSTGRES_DB` 改为 `weavefield_test_m11`、`POSTGRES_PORT` 改为 `55432`（被占用则换空闲端口）；核对数据库包 `.env` 的 `DATABASE_TEST_URL`。保持独立项目名，测试不会使用日常开发卷。
+
+```bash
+docker compose --env-file infra/.env.test -p weavefield-m11-test -f infra/docker-compose.yml up -d --wait postgres
+pnpm --filter @weavefield/database db:test
+```
+
+测试只接受本机、库名以 `weavefield_test_` 开头、`public` schema 的 URL；对该测试库应用迁移，创建随机标识的记录，验证读写、唯一/外键约束、事务回滚、重复部署保留数据、级联删除及其他空间数据保留，最后只清理本次记录。此测试不等于服务端租户授权测试。
+
+GitHub Actions 使用独立的 PostgreSQL 16 临时服务运行相同检查；`weavefield_ci_only` 是该临时库的示例密码，不使用本地或生产凭据。未推送的修改仍需后续真实 CI 验收。
+
+数据库重启验证应在同一测试卷中写入已提交记录，记录 ID 和内容，再执行：
+
+```bash
+docker compose --env-file infra/.env.test -p weavefield-m11-test -f infra/docker-compose.yml restart postgres
+docker compose --env-file infra/.env.test -p weavefield-m11-test -f infra/docker-compose.yml up -d --wait postgres
+```
+
+用新建 Prisma 连接查询原 ID，并精确比较内容后，才算持久化通过；单纯再次运行会自行清理记录的 `db:test` 不能证明重启恢复。停止测试服务可使用相同参数的 `stop postgres`。不要使用 `down -v`、删除已有卷或 `prisma migrate reset`。
+
+统一入口位于 `packages/database/src/index.ts`，先 `pnpm --filter @weavefield/database build`，服务端通过 workspace 依赖 `@weavefield/database` 导入 `prisma` 与生成类型。每个服务进程共享一个 Client/连接池；连接使用该进程的 `DATABASE_URL`。Prisma CLI 会读取数据库包 `.env`，普通 Node/NestJS 导入不会自动加载该文件。API 本轮仍只有 `/health`，尚未接入数据库；后续 NestJS provider 负责注入此实例、启动连接和关闭断开。Web 不得导入该包。
 
 健康检查：`http://127.0.0.1:3001/health`。
 
@@ -126,9 +181,7 @@ M0 已验证的依赖组合：React/React DOM 19.3.1、BlockNote 0.52.1（三包
 
 ## GitHub 远程仓库
 
-GitHub 仓库 [muddyrain/weavefield](https://github.com/muddyrain/weavefield) 已创建，本地 `origin` 的 fetch/push 地址均为 `https://github.com/muddyrain/weavefield.git`。2026-10-20 的 `git ls-remote origin` 检查成功且未返回任何引用，远程仓库仍为空。仓库已创建不代表代码已推送。
-
-本地 `main` 已有历史提交，但待审查的 M0 工程改动、开发规范调整和验收报告尚未提交，首次公开推送尚未执行；`main` 尚无远程跟踪分支。本机 Git 的写入认证仍需验证，不能从公开仓库的只读访问成功推断有写入权限。本次在 PATH 和常见安装位置未找到 GitHub CLI，未执行 CLI 认证命令；即使后续 CLI 认证可用，也不必然证明 Git 使用同一套凭据。
+GitHub 仓库 [muddyrain/weavefield](https://github.com/muddyrain/weavefield) 已有公开推送，`main` 跟踪 `origin/main`，当前本机远程使用 SSH。M0 与后续修复已通过 Linux CI；[M1.1 开发前的 main CI](https://github.com/muddyrain/weavefield/actions/runs/39539876436) 为 success。该结果不代表未提交的 M1.1 改动已通过远端验收；M0 历史报告保持原记录。
 
 ```bash
 git status --short --branch

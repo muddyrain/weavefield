@@ -40,9 +40,20 @@
 - [x] 注册 / 登录 / 退出 / 当前用户，密码哈希、Cookie 与服务端会话撤销
 - [x] NestJS 数据库 Provider 生命周期、Origin / JSON / 输入保护与基础限流
 - [x] React 真实账号交互、刷新恢复和会话失效反馈，M0 协作身份保持独立
-- [x] 本地 API 11/11、原数据库检查、升级探针、typecheck、单元 17/17、build、完整 E2E 12/12 通过
+- [x] 本地认证 API 12/12、原数据库检查、升级探针、typecheck、单元 19/19、build、完整 E2E 14/14 通过
 
-实际结果见 [M1.2 报告](reports/M1.2.md)。本轮不提交、推送或创建 PR，Linux CI 待后续授权验证。M1.3 工作空间业务与租户权限尚未开始；M2 协作票据与 PostgreSQL Yjs 持久化未实现。
+M1.2 已通过 PR #2 Squash 合入 main（1c7418d），[合并后 Linux CI 39572948591](https://github.com/muddyrain/weavefield/actions/runs/39572948591) 为 success。[M1.2 报告](reports/M1.2.md) 保留当时的阶段记录，以上数量包含后续已合并审查修复。
+
+### M1.3 · Workspace 与 Membership 权限系统（本地验收）
+
+- [x] Session Guard、明确的安全 DTO、当前用户空间列表与租户隔离
+- [x] 事务创建空间及 OWNER，OWNER 修改空间名称、按邮箱添加已有账号、管理角色和移除成员
+- [x] EDITOR / VIEWER 只读，非成员统一 404，最后 OWNER 的父行锁与事务并发保护
+- [x] React 共享真实认证状态、创建 / 切换 / 成员管理、刷新恢复、失效状态清理及移动端反馈
+- [x] Workspace API 集成及并发反向验证，原数据库 / 认证 / M0 协作回归，新增 CI 步骤
+- [ ] 人工最终审查、授权提交 / PR 与 Linux CI 验证
+
+详见 [M1.3 报告](reports/M1.3.md)。未新增 Schema / Migration，不提供空间删除或邮件邀请；真实空间与 M0 共享演示文档明确分开。M1.4 文档 CRUD、M1 整体 OpenAPI 门槛与 M2 正式协作授权仍未完成，本轮不自动推进。
 
 ## M2 · 可靠的实时协作文档（估计 2–3 周）
 

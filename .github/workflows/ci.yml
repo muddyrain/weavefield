@@ -40,8 +40,17 @@ jobs:
           DATABASE_TEST_URL: postgresql://weavefield:weavefield_ci_only@127.0.0.1:5432/weavefield_test_ci?schema=public
       - run: pnpm --filter @weavefield/database db:test:upgrade
       - run: pnpm test:auth
+      - run: pnpm test:workspaces
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+      # 仅上传测试显式生成的 Selection 数值，不上传含凭据的原始 trace / 截图。
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: collaboration-caret-diagnostics
+          path: test-results/**/attachments/caret-diagnostics-*.json
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Activity, ArrowUpRight, BookOpenText, CheckCheck, CircleHelp, Clock3, FileText, GitBranch, Layers, LayoutGrid, Link2, Lock, PanelLeft, Plus, Search, Settings2, Sparkles, Users, Workflow } from 'lucide-react';
 import AuthPanel from './components/AuthPanel';
+import WorkspacePanel from './components/WorkspacePanel';
 import CollaborativeEditor from './components/CollaborativeEditor';
 import { currentRoom } from './lib/room';
 
@@ -20,6 +21,7 @@ function WorkspacePlaceholder({ tab }: { tab: Exclude<Tab, 'document'> }) {
 }
 
 export default function App() {
+  const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('document');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [shareStatus, setShareStatus] = useState<'idle' | 'copying' | 'success' | 'error'>('idle');
@@ -56,12 +58,13 @@ export default function App() {
         </nav>
         <div className="sidebar-bottom"><div className="team"> <div className="team-avatar">W</div><div><strong>Weavefield Demo</strong><small>前端 × 实时协作练习</small></div><Settings2 size={15}/></div></div>
       </aside>
+      <WorkspacePanel open={workspacesOpen} onClose={() => setWorkspacesOpen(false)}/>
       <main className="main-panel">
         <header className="topbar">
           <button className="icon-button" aria-label="切换侧栏" onClick={() => setSidebarOpen(v => !v)}><PanelLeft size={18}/></button>
           <div className="breadcrumb"><span>Nova 产品空间</span><span className="slash">/</span><strong>{tab==='document'?'产品需求文档':tab==='workflow'?'用户流程':'开发任务'}</strong></div>
           <div className="top-actions">
-            <AuthPanel/>
+            <AuthPanel onOpenWorkspaces={() => setWorkspacesOpen(true)}/>
             <span className="demo-pill"><Lock size={12}/> 本地演示</span>
             <div className="share-control">
               <button className="share-btn" onClick={share} disabled={shareStatus === 'copying'} title="仅供同一台电脑的其他标签页或浏览器窗口使用，其他电脑无法访问">

@@ -1,62 +1,14 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import type { AuthSession as Session } from '@weavefield/shared';
+import { useAuth } from '../auth/AuthContext';
 
-type Status = 'loading' | 'anonymous' | 'authenticated' | 'unavailable';
-
-export default function AuthPanel() {
-  const [status, setStatus] = useState<Status>('loading');
-  const [session, setSession] = useState<Session | null>(null);
+export default function AuthPanel({ onOpenWorkspaces }: { onOpenWorkspaces: () => void }) {
+  const { status, session, sessionNotice, refresh, cancelRefresh, acceptSession, clearSession } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const dialog = useRef<HTMLDialogElement>(null);
-  const revision = useRef(0);
-  const mounted = useRef(true);
-
-  const refresh = useCallback(async () => {
-    const current = ++revision.current;
-    try {
-      const response = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
-      if (!mounted.current || current !== revision.current) return;
-      if (response.status === 401) {
-        setSession(null); setStatus('anonymous');
-        return;
-      }
-      if (!response.ok) throw new Error('无法验证登录状态');
-      const data: Session = await response.json();
-      if (!mounted.current || current !== revision.current) return;
-      setSession(data); setStatus('authenticated');
-    } catch {
-      if (!mounted.current || current !== revision.current) return;
-      setSession(null); setStatus('unavailable');
-    }
-  }, []);
-
-  useEffect(() => {
-    mounted.current = true;
-    void refresh();
-    const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
-    window.addEventListener('focus', onVisible);
-    document.addEventListener('visibilitychange', onVisible);
-    const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh(); }, 60000);
-    return () => {
-      mounted.current = false; revision.current++;
-      window.removeEventListener('focus', onVisible);
-      document.removeEventListener('visibilitychange', onVisible);
-      clearInterval(interval);
-    };
-  }, [refresh]);
-
-  useEffect(() => {
-    if (!session) return;
-    const remaining = Date.parse(session.sessionExpiresAt) - Date.now();
-    const timeout = window.setTimeout(() => {
-      revision.current++; setSession(null); setStatus('anonymous'); setNotice('会话已到期，请重新登录');
-    }, Math.max(remaining, 0));
-    return () => clearTimeout(timeout);
-  }, [session]);
-
   async function write(route: string, body: unknown) {
     const response = await fetch(`/api/auth/${route}`, { method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'X-Weavefield-Request': '1' }, body: JSON.stringify(body) });
@@ -76,21 +28,20 @@ export default function AuthPanel() {
       setError('密码须为 12–128 个字符，UTF-8 编码不超过 256 字节'); return;
     }
     if (mode === 'register' && (!displayName || Array.from(displayName).length > 50)) { setError('昵称须为 1–50 个字符'); return; }
-    revision.current++; setPending(true); setError(''); setNotice('');
+    cancelRefresh(); setPending(true); setError(''); setNotice('');
     try {
       const response = await write(mode, { email, password, ...(mode === 'register' ? { displayName } : {}) });
       const data: Session = await response.json();
-      revision.current++;
-      setSession(data); setStatus('authenticated'); dialog.current?.close();
+      acceptSession(data); dialog.current?.close();
       setNotice(mode === 'register' ? '注册成功，已登录' : '登录成功');
     } catch (error) { setError(error instanceof Error ? error.message : '连接认证服务失败，请重试'); }
     finally { setPending(false); }
   }
   async function logout() {
-    revision.current++; setPending(true); setError(''); setNotice('');
+    cancelRefresh(); setPending(true); setError(''); setNotice('');
     try {
       await write('logout', {});
-      revision.current++; setSession(null); setStatus('anonymous'); setNotice('已退出登录');
+      clearSession(); setNotice('已退出登录');
     } catch {
       setNotice('退出响应异常，请检查连接和当前登录状态');
       await refresh();
@@ -101,7 +52,7 @@ export default function AuthPanel() {
 
   return <div className="auth-control">
     {status === 'authenticated' && session ? <>
-      <button className="account-button" onClick={() => void refresh()} title={`当前账号：${session.user.email}`}>
+      <button className="account-button" onClick={() => { void refresh(); onOpenWorkspaces(); }} title={`当前账号：${session.user.email}；打开我的工作空间`}>
         <span className="account-initial" aria-hidden="true">{Array.from(session.user.displayName)[0]}</span>
         <span className="account-name" data-testid="current-user">{session.user.displayName}</span>
       </button>
@@ -109,7 +60,7 @@ export default function AuthPanel() {
     </> : <button className="account-button" onClick={open} disabled={status === 'loading'}>
       {status === 'loading' ? '验证账号…' : status === 'unavailable' ? '账号连接失败' : '登录 / 注册'}
     </button>}
-    {notice && <p className="auth-notice" role="status">{notice}</p>}
+    {(notice || sessionNotice) && <p className="auth-notice" role="status">{sessionNotice || notice}</p>}
     <dialog ref={dialog} className="auth-dialog" onClose={() => { dialog.current?.querySelector('form')?.reset(); setError(''); }} aria-labelledby="auth-heading" onCancel={event => { if (pending) event.preventDefault(); }}>
       <div className="auth-dialog-head"><span>WEAVEFIELD · 织域</span><button type="button" aria-label="关闭认证窗口" disabled={pending} onClick={() => dialog.current?.close()}>×</button></div>
       <h2 id="auth-heading">{mode === 'login' ? '登录你的账号' : '创建织域账号'}</h2>

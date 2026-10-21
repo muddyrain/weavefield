@@ -32,7 +32,17 @@
 - [x] PostgreSQL 16 容器、干净库迁移、重复部署、CRUD/约束/事务及重启持久化本地验收
 - [x] typecheck / 单元测试 15/15 / build / 现有 Playwright E2E 8/8 无回归
 
-本地验收通过，待人工审查；本轮未提交或推送，新 CI 尚未运行。实际执行与未验证项记录在 [M1.1 报告](reports/M1.1.md)。本阶段不包含注册登录、工作空间业务 API 或权限 Guard；M1 整体仍未完成，M1.2 未开始。
+已通过 PR #1 Squash 合入 main（a4b2a44），合并后 Linux CI 39560662066 为 success。实际执行与未验证项记录在 [M1.1 报告](reports/M1.1.md)。本阶段不包含注册登录、工作空间业务 API 或权限 Guard；M1 整体仍未完成。
+
+### M1.2 · NestJS 密码认证与数据库 Session
+
+- [x] 新增认证迁移，保留旧用户与 M1.1 初始 Migration
+- [x] 注册 / 登录 / 退出 / 当前用户，密码哈希、Cookie 与服务端会话撤销
+- [x] NestJS 数据库 Provider 生命周期、Origin / JSON / 输入保护与基础限流
+- [x] React 真实账号交互、刷新恢复和会话失效反馈，M0 协作身份保持独立
+- [x] 本地 API 11/11、原数据库检查、升级探针、typecheck、单元 17/17、build、完整 E2E 12/12 通过
+
+实际结果见 [M1.2 报告](reports/M1.2.md)。本轮不提交、推送或创建 PR，Linux CI 待后续授权验证。M1.3 工作空间业务与租户权限尚未开始；M2 协作票据与 PostgreSQL Yjs 持久化未实现。
 
 ## M2 · 可靠的实时协作文档（估计 2–3 周）
 

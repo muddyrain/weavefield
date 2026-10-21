@@ -11,8 +11,9 @@ Weavefield 是一个面向 2–8 人小团队的实时协作工作台：**多人
 - [x] React + Vite Web 初始界面与 BlockNote/Hocuspocus **本地协作演示代码**
 - [x] NestJS `/health` 基础模块、Hocuspocus 本地开发服务
 - [x] M0 依赖安装、锁文件、类型检查、单元测试与构建验证（Node 22 LTS）
-- [x] M1.1 PostgreSQL 16 / Prisma 初始迁移与数据库包已通过本地验收，待人工审查（见 [M1.1 报告](docs/reports/M1.1.md)）
-- [ ] **正式认证、工作空间 CRUD、Yjs PostgreSQL 持久化尚未实现**；M0 协作仍使用本地二进制文件
+- [x] M1.1 PostgreSQL 16 / Prisma 基础设施已通过 PR #1 合入 main，Linux CI 已通过（见 [M1.1 报告](docs/reports/M1.1.md)）
+- [x] M1.2 密码认证、数据库 Session 与 React 登录交互本地验收通过，待人工审查（见 [M1.2 报告](docs/reports/M1.2.md)）
+- [ ] **工作空间 CRUD、租户权限、Yjs PostgreSQL 持久化尚未实现**；登录不会授予 M0 协作权限
 - [x] GitHub 仓库已创建，本地 `origin` 已配置
 - [x] M0 及后续测试、演示体验修复已推送，Linux GitHub Actions 已通过
 
@@ -52,7 +53,7 @@ weavefield/
 
 ## 本地运行
 
-**环境：Node.js 22 LTS、pnpm 10.18.0、Docker（M0 可选，M1.1 数据库验收必需）。** 项目以实际验证过的 **Node.js 22.23.3** 为开发与 CI 基准：`.nvmrc` 固定该版本，CI 从同一文件读取；`package.json` 的 `engines.node` 为 `>=22.23.3 <23`，`packageManager` 固定 `pnpm@10.18.0`。系统 Node 26 不在项目声明的支持范围内；engines 是版本声明，不会自动切换运行时。Web `5173`、API `3001`、协作 WebSocket `1234`。
+**环境：Node.js 22 LTS、pnpm 10.18.0、Docker（M0 编辑器演示可选，数据库验收与 M1.2 认证必需）。** 项目以实际验证过的 **Node.js 22.23.3** 为开发与 CI 基准：`.nvmrc` 固定该版本，CI 从同一文件读取；`package.json` 的 `engines.node` 为 `>=22.23.3 <23`，`packageManager` 固定 `pnpm@10.18.0`。系统 Node 26 不在项目声明的支持范围内；engines 是版本声明，不会自动切换运行时。Web `5173`、API `3001`、协作 WebSocket `1234`。
 
 ### Windows 开发环境准备
 
@@ -78,8 +79,9 @@ pnpm install --frozen-lockfile
 cp apps/web/.env.example apps/web/.env
 cp apps/collab/.env.example apps/collab/.env
 cp apps/api/.env.example apps/api/.env
-pnpm dev
 ```
+
+已有 `.env` 时不要重复复制。首次运行请先完成下方 PostgreSQL 16 启动、迁移及 [M1.2 API 配置](#m12账号与会话)，然后执行 `pnpm dev`。只运行 M0 编辑器演示时，可分别启动 `pnpm dev:web` 与 `pnpm dev:collab`；此时账号区域会提示认证服务连接失败。
 
 打开 `http://127.0.0.1:5173/?doc=demo-project`。在两个浏览器窗口打开**相同 URL**，输入文字，检查协作与光标。开发演示会将 Yjs 二进制快照写到 `apps/collab/.local/snapshots/doc-demo-project.bin`，通常在最后编辑后 800 ms 写入（持续编辑时最多等待 2500 ms）。第一次启动若协作服务还没准备好，页面会显示连接状态。
 
@@ -148,9 +150,43 @@ docker compose --env-file infra/.env.test -p weavefield-m11-test -f infra/docker
 
 用新建 Prisma 连接查询原 ID，并精确比较内容后，才算持久化通过；单纯再次运行会自行清理记录的 `db:test` 不能证明重启恢复。停止测试服务可使用相同参数的 `stop postgres`。不要使用 `down -v`、删除已有卷或 `prisma migrate reset`。
 
-统一入口位于 `packages/database/src/index.ts`，先 `pnpm --filter @weavefield/database build`，服务端通过 workspace 依赖 `@weavefield/database` 导入 `prisma` 与生成类型。每个服务进程共享一个 Client/连接池；连接使用该进程的 `DATABASE_URL`。Prisma CLI 会读取数据库包 `.env`，普通 Node/NestJS 导入不会自动加载该文件。API 本轮仍只有 `/health`，尚未接入数据库；后续 NestJS provider 负责注入此实例、启动连接和关闭断开。Web 不得导入该包。
+统一入口位于 `packages/database/src/index.ts`，先 `pnpm --filter @weavefield/database build`，服务端通过 workspace 依赖 `@weavefield/database` 导入 `prisma` 与生成类型。每个服务进程共享一个 Client/连接池；连接使用该进程的 `DATABASE_URL`。Prisma CLI 会读取数据库包 `.env`，普通 Node/NestJS 导入不会自动加载该文件。M1.2 的 NestJS DatabaseService 已通过 Provider 管理启动连接与关闭断开。Web 不得导入该包。
 
 健康检查：`http://127.0.0.1:3001/health`。
+
+## M1.2：账号与会话
+
+启动上述 PostgreSQL 16 开发库，先核对 DATABASE_URL 与容器/卷归属，再执行 `pnpm --filter @weavefield/database db:deploy` 应用新的认证迁移；不得修改初始 Migration 或 reset。已有用户保留原字段，密码默认为空，不能以任何默认密码登录。旧邮箱规范化冲突会阻止迁移，需人工核对账号归属，不能自动合并或删除。
+
+在被忽略的 `apps/api/.env` 中设置同一开发库的 DATABASE_URL，并将 WEB_ORIGIN 精确设为浏览器地址，例如 `http://127.0.0.1:5173`（与 localhost 不等同）。不要覆盖已有本地配置。Vite 将 `/api` 代理至 `http://127.0.0.1:3001`，可通过服务端变量 API_PROXY_TARGET 调整；浏览器始终发送同源请求，不接触数据库凭据。
+
+执行 `pnpm dev:api`、`pnpm dev:web`，需要协作演示时另启 `pnpm dev:collab`。API 会先构建数据库包并连接数据库，缺少配置或连接失败时不会假装认证可用。Web/Collab 的本地演示仍独立于账号权限；API 未运行时账号显示连接失败，但编辑器可继续使用自己的演示配置。
+
+右上角可注册、登录和退出。注册后自动建立 Session，刷新后由真实 `/auth/me` 恢复用户信息。每次登录生成新 Token，退出撤销服务端当前 Session；七天绝对过期，无自动续期。前端在到期、重新聚焦/可见、每分钟检查或收到 401 时更新状态；网络失败不会显示已登录用户。
+
+| 接口 | 结果 |
+|---|---|
+| POST /auth/register | 201；邮箱、密码、昵称；邮箱 trim/lowercase，重复为 409 |
+| POST /auth/login | 200；邮箱、密码；无账号与密码错误统一 401 |
+| GET /auth/me | 200 返回 user 和 sessionExpiresAt；未登录、过期、撤销返回 401 |
+| POST /auth/logout | 204，撤销当前服务端 Session 并清 Cookie，支持幂等退出 |
+
+所有 POST 使用 JSON、`X-Weavefield-Request: 1` 和精确 Origin。响应仅含用户 id/email/displayName 与过期时间，不含 passwordHash 或 Token；Token 仅经 HttpOnly Cookie 传递，数据库只存摘要。密码 12–128 个字符、UTF-8 最多 256 字节；JSON 最多 4 KiB。昵称 1–50 个字符。触发基础限流返回 429。
+
+生产 NODE_ENV=production 强制 HTTPS WEB_ORIGIN、Secure 的 __Host- Cookie（HttpOnly / SameSite=Lax / Path=/，不设置 Domain）。本轮仅完成配置和接口验证，不代表已搭建 HTTPS 或完成生产部署；多实例共享限流、密码找回、邮箱验证与过期 Session 清理尚未实现。详见 [ADR-0004](docs/decisions/ADR-0004-database-cookie-sessions.md)。M0 Collab 仍禁止公网部署。
+
+认证集成与完整 E2E 都需要独立的 PostgreSQL 16 测试库。配置数据库包 `.env` 的 DATABASE_TEST_URL，运行：
+
+```bash
+pnpm --filter @weavefield/database db:test
+pnpm --filter @weavefield/database db:test:upgrade
+pnpm test:auth
+pnpm test:e2e
+```
+
+`db:test:upgrade` 需要测试账号具备 CREATEDB 权限：它在已核对的本机测试服务器新建随机命名的 `weavefield_test_upgrade_*` 库，验证 M1.1 旧数据升级与冲突拒绝。探针库保留供审查，不删除用户库、不清卷。不要将测试管理员账号用于生产 API。所有测试先核对 URL、实际库名及 PostgreSQL 主版本，再执行迁移。
+
+Playwright 自动构建 API，并在端口 13001 启动连接测试库的真实 NestJS，Web 为 15173。认证测试通过真实 API 注册/登录，验证刷新、退出、会话失效、两个浏览器身份隔离及移动端反馈。原有 8 项 M0 测试继续执行。CI 保留原 PostgreSQL 检查，并新增升级与认证 API 检查。本地通过不等于新 Linux CI 已通过。
 
 ## 质量检查
 
@@ -171,7 +207,7 @@ pnpm test:e2e
 pnpm test:e2e --headed
 ```
 
-测试会自动启动独立的 Web/API/Collab（端口 `15173` / `13001` / `11234`），使用临时快照目录，验证 `/health`、双向编辑、刷新、断连期间双方编辑、重连收敛，以及清除浏览器内存并重启服务后的磁盘恢复。运行结束自动清理，不使用日常 `.local` 数据。测试失败时，trace 和截图在 `test-results/`。
+测试会在配置独立 DATABASE_TEST_URL 后自动启动 Web/API/Collab（端口 `15173` / `13001` / `11234`），使用临时快照目录，验证 `/health`、双向编辑、刷新、断连期间双方编辑、重连收敛，以及清除浏览器内存并重启服务后的磁盘恢复。运行结束自动清理，不使用日常 `.local` 数据。测试失败时，trace 和截图在 `test-results/`。
 
 手工恢复检查：编辑后等待至少 3 秒，关闭两个窗口并重启协作服务，重新打开相同 URL。确认原内容恢复；协作服务停止时保持窗口打开并输入，重启后确认双方内容合并。连接状态“已同步”表示客户端已同步，不是磁盘写入确认；进程在防抖写入前被强杀，最近修改仍可能丢失。
 

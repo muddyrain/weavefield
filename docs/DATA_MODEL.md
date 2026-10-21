@@ -1,11 +1,12 @@
 # Weavefield · 数据模型（v0.1 草案）
 
-Schema: `packages/database/prisma/schema.prisma`。M1.1 增加全部草案表的初始 Migration 与统一 Prisma Client 入口（实际验收见 [报告](reports/M1.1.md)）；NestJS 业务 service/repository 和授权尚未实现。
+Schema: `packages/database/prisma/schema.prisma`。M1.1 增加全部草案表的初始 Migration 与统一 Prisma Client 入口（实际验收见 [报告](reports/M1.1.md)）；M1.2 新增认证迁移、AuthService 和数据库 Provider；工作空间业务与租户授权尚未实现。
 
 ## 关系模型
 
 ```mermaid
  erDiagram
+  User ||--o{ Session : authenticates
   User ||--o{ Membership : joins
   Workspace ||--o{ Membership : owns
   Workspace ||--o{ Document : contains
@@ -21,7 +22,8 @@ Schema: `packages/database/prisma/schema.prisma`。M1.1 增加全部草案表的
 
 | 表 | 职责 | 重要字段 |
 |---|---|---|
-| User | 平台用户 | id / email / name |
+| User | 平台用户 | id / email / emailCanonical unique / displayName / passwordHash? |
+| Session | 七天绝对有效的服务端会话 | tokenHash unique / userId / expiresAt index / revokedAt |
 | Workspace | 工作空间 | id / slug / name |
 | Membership | 多租户成员与角色 | (workspaceId,userId) unique；OWNER/EDITOR/VIEWER |
 | Document | 文档元数据 | id / workspaceId / title / ydocRoomName |
@@ -45,3 +47,9 @@ Schema: `packages/database/prisma/schema.prisma`。M1.1 增加全部草案表的
 ## 实现提醒
 
 Prisma 的关系建模并不会自动替代授权逻辑。必须有请求级 Guard / Service ACL。数据库事务也不代替 Yjs 协同状态的合并语义。参考 `docs/ARCHITECTURE.md`。
+
+## M1.2 认证迁移
+
+新增 emailCanonical 和 passwordHash 均可空，以保留旧用户及 M1.1 的数据库操作兼容性。认证注册始终写入规范化邮箱和 scrypt 摘要；迁移回填旧邮箱 canonical，保留原 email。旧账号 passwordHash=null，没有默认密码，不能登录。规范化冲突在 DDL 前阻止升级，其余变更与回填使用事务。
+
+Session.userId 外键随 User 删除而级联，Session.tokenHash 为随机 Token 的 SHA-256 摘要，无法直接作为 Cookie 使用。认证查询要求 expiresAt 在未来且 revokedAt 为空；退出删除当前记录。过期/撤销记录的批量清理尚未实现，不可将 Session 当作租户或文档授权。

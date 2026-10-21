@@ -29,6 +29,12 @@ importers:
 
   apps/api:
     dependencies:
+      '@weavefield/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      express:
+        specifier: 5.2.1
+        version: 5.2.1
       '@nestjs/common':
         specifier: ^11.0.0
         version: 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)

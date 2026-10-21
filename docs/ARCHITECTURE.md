@@ -1,6 +1,6 @@
 # Weavefield · 技术架构说明
 
-> 状态：v0.1 设计基线；M1.1 增加数据库基础设施（验收结果见 [M1.1 报告](reports/M1.1.md)）。**认证、业务 API、PostgreSQL 协作持久化仍未实现，以下生产流程仍为目标设计。**
+> 状态：v0.1 设计基线；M1.1 增加数据库基础设施（验收结果见 [M1.1 报告](reports/M1.1.md)）。M1.2 已增加密码认证与数据库 Session（本地验收见 [M1.2 报告](reports/M1.2.md)）。**工作空间业务 API、租户权限及 PostgreSQL 协作持久化仍未实现，以下协作生产流程仍为目标设计。**
 
 ## 1. 系统分层
 
@@ -25,12 +25,38 @@ flowchart TB
 ### M1.1 数据库基础设施
 
 - `infra/docker-compose.yml` 使用 PostgreSQL 16，仅向 `127.0.0.1` 发布端口，命名卷保存数据，`pg_isready` 健康检查配合 `up --wait`；密码从被忽略的环境文件注入。开发与验收使用不同 Compose 项目、端口和数据库，操作前需确认卷归属。
-- `packages/database/prisma/schema.prisma` 是模型定义的唯一来源；`prisma/migrations` 保存初始 SQL 与迁移历史定义。初始迁移包括 10 张现有草案表，没有删除后续模型。`db:deploy` 应用迁移，`db:generate` 将 Prisma 6.19.3 Client 生成到 `packages/database/generated/client`，生成物不入库。
-- `packages/database/src/index.ts` 将生成类型与进程内共享 `prisma` 实例统一导出，编译为 CommonJS 供后续 NestJS 使用。导入不会立即连接；各服务管理连接生命周期，并为自身进程注入 `DATABASE_URL`。不同服务进程各有连接池，不共享跨进程单例。API 当前只有 `/health`，没有提前导入数据库或增加业务接口。
+- `packages/database/prisma/schema.prisma` 是模型定义的唯一来源；`prisma/migrations` 保存初始 SQL 与迁移历史定义。初始迁移包括 10 张现有草案表，没有删除后续模型；M1.2 另增认证迁移，不修改初始迁移。`db:deploy` 应用迁移，`db:generate` 将 Prisma 6.19.3 Client 生成到 `packages/database/generated/client`，生成物不入库。
+- `packages/database/src/index.ts` 将生成类型与进程内共享 `prisma` 实例统一导出，编译为 CommonJS 供后续 NestJS 使用。导入不会立即连接；各服务管理连接生命周期，并为自身进程注入 `DATABASE_URL`。不同服务进程各有连接池，不共享跨进程单例。M1.2 的 DatabaseService 已通过 NestJS Provider 连接该实例，应用启用关闭钩子；未添加工作空间业务接口。
 - `Membership` 用 `(workspaceId, userId)` 复合主键防止重复成员；新增 `userId` 索引补足按用户查询和外键删除检查。Document 的 `(workspaceId, updatedAt)` 索引用于空间内文档列表。删除空间级联删除成员关系、文档及其快照；删除用户只删除成员关系，不删除工作空间。
-- 数据库外键和唯一约束验证关系完整性，不能替代授权。Workspace 没有自动生成 owner 的数据库约束，后续业务必须通过事务保证空间与 owner 成员一起创建。邮件大小写归一化、角色权限与跨租户对象检查尚未实现。
+- 数据库外键和唯一约束验证关系完整性，不能替代授权。Workspace 没有自动生成 owner 的数据库约束，后续业务必须通过事务保证空间与 owner 成员一起创建。M1.2 已为认证入口实现邮箱规范化，角色权限与跨租户对象检查尚未实现。
 - DocumentSnapshot（`Bytes`）、Board、BoardNode、BoardEdge、Task、EntityLink 当前仅有表结构。BoardEdge 的端点 ID、Task 的 assigneeId 和 EntityLink 的多态引用尚无目标实体外键；启用这些业务前须验证对象存在、归属及删除策略。本轮未把普通二进制字段读写等同于 Yjs PostgreSQL 持久化。
 - `packages/database/test/integration.cjs` 在显式指定的本机测试库验证真实迁移、CRUD、约束、事务和级联删除；测试不执行 reset，也不重启或清空用户已有数据库。服务重启持久化需在保留同一卷的情况下另行精确比较已提交记录。
+
+### M1.2 认证数据流
+
+```mermaid
+sequenceDiagram
+    participant W as React / Vite
+    participant A as NestJS AuthController
+    participant S as AuthService / PasswordService
+    participant P as PostgreSQL / Prisma
+    W->>A: POST /auth/register 或 login (JSON + Origin + 自定义头)
+    A->>A: CSRF / 输入 / 限流检查
+    A->>S: 规范化邮箱及密码
+    S->>S: scrypt 哈希或定时安全比较
+    S->>P: 用户与 Session 摘要写入事务
+    A-->>W: HttpOnly Cookie + 公开用户信息 + 绝对过期时间
+    W->>A: GET /auth/me (Cookie)
+    A->>P: 查询摘要、过期与撤销状态
+    A-->>W: 公开用户信息或 401
+    W->>A: POST /auth/logout
+    A->>P: 删除当前 Session
+    A-->>W: 204 + 清除 Cookie
+```
+
+数据库包实例由 DatabaseService 在 onModuleInit/onModuleDestroy 中连接和断开。Session 为随机不透明凭据，七天绝对过期；不把 Token 放进 React 状态、localStorage 或 JSON 响应。AuthPanel 只依据真实 API 显示身份，并处理过期、网络错误和请求竞争。Nova、协作演示访客及协作令牌仍与认证账号分离，登录不创建 Membership，不发放协作权限。
+
+生产 Cookie、CSRF、防暴力尝试、旧数据兼容和当前限制统一记录在 [ADR-0004](decisions/ADR-0004-database-cookie-sessions.md)。本轮仍为单实例、loopback API，没有提供公网部署或共享限流。
 
 ## 2. 开发与生产的安全边界
 
@@ -130,3 +156,4 @@ flowchart LR
 - [ADR-0001 NestJS 和 Hocuspocus 分离](decisions/ADR-0001-separate-api-and-collab.md)
 - [ADR-0002 Yjs Binary 为协同权威状态](decisions/ADR-0002-yjs-binary.md)
 - [ADR-0003 跨视图稳定实体关系](decisions/ADR-0003-entity-links.md)
+- [ADR-0004 数据库 Cookie Session](decisions/ADR-0004-database-cookie-sessions.md)

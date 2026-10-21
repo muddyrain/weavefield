@@ -6,6 +6,20 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: weavefield
+          POSTGRES_PASSWORD: weavefield_ci_only
+          POSTGRES_DB: weavefield_test_ci
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U weavefield -d weavefield_test_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -16,6 +30,12 @@ jobs:
           node-version-file: .nvmrc
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
+      - run: pnpm --filter @weavefield/database db:validate
+        env:
+          DATABASE_URL: postgresql://weavefield:weavefield_ci_only@127.0.0.1:5432/weavefield_test_ci?schema=public
+      - run: pnpm --filter @weavefield/database db:test
+        env:
+          DATABASE_TEST_URL: postgresql://weavefield:weavefield_ci_only@127.0.0.1:5432/weavefield_test_ci?schema=public
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

@@ -2,6 +2,8 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "@weavefield/database#build": { "cache": false },
+    "@weavefield/database#typecheck": { "cache": false },
     "@weavefield/shared#build": { "outputs": [] },
     "@weavefield/collab#build": { "outputs": [] },
     "typecheck": { "dependsOn": ["^typecheck"] },

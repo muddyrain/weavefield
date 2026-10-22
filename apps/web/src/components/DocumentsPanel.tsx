@@ -3,7 +3,7 @@ import type { DocumentMetadata, WorkspaceSummary } from '@weavefield/shared';
 import { useAuth } from '../auth/AuthContext';
 
 class DocumentError extends Error {
-  constructor(message: string, readonly status: number) { super(message); }
+  constructor(message: string, readonly status: number, readonly listRequest: boolean) { super(message); }
 }
 
 export default function DocumentsPanel({ workspace }: { workspace: WorkspaceSummary }) {
@@ -27,7 +27,7 @@ export default function DocumentsPanel({ workspace }: { workspace: WorkspaceSumm
     if (response.status === 401 && current(stamp)) clearSession();
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
-      throw new DocumentError(typeof result.message === 'string' ? result.message : '文档请求失败，请重试', response.status);
+      throw new DocumentError(typeof result.message === 'string' ? result.message : '文档请求失败，请重试', response.status, suffix === '' && method === 'GET');
     }
     return response.json();
   }, [root, current, clearSession]);
@@ -48,6 +48,26 @@ export default function DocumentsPanel({ workspace }: { workspace: WorkspaceSumm
     return () => { alive.current = false; revision.current++; };
   }, [reload]);
 
+  async function handleFailure(error: unknown, stamp: number, id: string) {
+    if (!current(stamp)) return;
+    setDetail(null); setSelected('');
+    if (error instanceof DocumentError && error.status === 403) setDenied(true);
+    setError(error instanceof Error ? error.message : '文档请求失败，请重试');
+    if (error instanceof DocumentError && error.listRequest && (error.status === 404 || error.status === 403)) setItems([]);
+    if (!(error instanceof DocumentError) || error.status !== 404 || error.listRequest) return;
+    // 单篇文档失效不代表空间失效；重新读取列表，由服务端确认当前读取权限。
+    setItems(list => list.filter(item => item.id !== id));
+    try {
+      const list = await api<DocumentMetadata[]>('', 'GET', undefined, stamp);
+      if (current(stamp)) setItems(list);
+    } catch (error) {
+      if (!current(stamp)) return;
+      if (error instanceof DocumentError && (error.status === 404 || error.status === 403)) setItems([]);
+      if (error instanceof DocumentError && error.status === 403) setDenied(true);
+      setError(error instanceof Error ? error.message : '无法连接文档服务，请刷新文档重试');
+    }
+  }
+
   async function select(id: string) {
     const stamp = ++revision.current;
     setSelected(id); setDetail(null); setReading(true); setError(''); setNotice('');
@@ -55,10 +75,7 @@ export default function DocumentsPanel({ workspace }: { workspace: WorkspaceSumm
       const document = await api<DocumentMetadata>(`/${id}`, 'GET', undefined, stamp);
       if (current(stamp)) setDetail(document);
     } catch (error) {
-      if (!current(stamp)) return;
-      setSelected('');
-      if (error instanceof DocumentError && error.status === 404) setItems(list => list.filter(item => item.id !== id));
-      setError(error instanceof Error ? error.message : '无法读取文档');
+      await handleFailure(error, stamp, id);
     } finally { if (current(stamp)) setReading(false); }
   }
   async function mutate(suffix: string, method: string, body: unknown, archived = false) {
@@ -71,11 +88,7 @@ export default function DocumentsPanel({ workspace }: { workspace: WorkspaceSumm
       setItems(list); setDetail(archived ? null : document); setSelected(archived ? '' : document.id);
       setNotice(archived ? '文档已归档' : '文档已保存');
     } catch (error) {
-      if (!current(stamp)) return;
-      setDetail(null); setSelected('');
-      if (error instanceof DocumentError && error.status === 403) setDenied(true);
-      if (error instanceof DocumentError && error.status === 404) setItems([]);
-      setError(error instanceof Error ? error.message : '操作失败，请重试');
+      await handleFailure(error, stamp, selected);
     } finally { if (current(stamp)) setPending(false); }
   }
   function create(event: FormEvent<HTMLFormElement>) {

@@ -12,12 +12,15 @@ const accounts = Object.fromEntries(['owner', 'editor', 'viewer', 'outsider'].ma
 let prisma: Awaited<ReturnType<typeof prepareDatabase>>;
 let authApi: { close(): Promise<void> } | undefined;
 let authBase: string;
-test.beforeAll(async ({ browser }) => {
-  prisma = await prepareDatabase();
-  // 独立真实 API 隔离夹具的认证限流计数；Session 仍由数据库校验，文档请求走原 E2E API。
+async function startAuthApi() {
+  // 按用例隔离真实 API 的认证限流计数；Session 仍由数据库校验，文档请求走原 E2E API。
   apiRequire('reflect-metadata'); process.env.WEB_ORIGIN = headers.Origin;
   const app = await apiRequire('./dist/application').createApplication(); authApi = app;
   await app.listen(0, '127.0.0.1'); authBase = await app.getUrl();
+}
+test.beforeAll(async ({ browser }) => {
+  prisma = await prepareDatabase();
+  await startAuthApi();
   for (const account of Object.values(accounts)) {
     const context = await browser.newContext();
     try {
@@ -26,6 +29,7 @@ test.beforeAll(async ({ browser }) => {
     } finally { await context.close(); }
   }
 });
+test.beforeEach(async () => { await authApi?.close(); await startAuthApi(); });
 test.afterEach(async () => { await prisma.workspace.deleteMany({ where: { slug: { startsWith: run } } }); });
 test.afterAll(async () => {
   try { if (prisma) await prisma.user.deleteMany({ where: { email: { startsWith: run } } }); }
@@ -205,7 +209,8 @@ test('loading, network failure and refresh recovery never claim an empty success
   } finally { release(); await context.close(); }
 });
 
-test('stale write permissions show 403 and externally archived details show 404', async ({ browser }) => {
+for (const action of ['rename', 'create'] as const) {
+test(`stale ${action} permissions show 403 and externally archived details show 404`, async ({ browser }) => {
   const owner = await login(browser); const editor = await login(browser, 'editor');
   try {
     const workspace = await space(owner.context, 'stale', '过期权限空间');
@@ -215,16 +220,193 @@ test('stale write permissions show 403 and externally archived details show 404'
     await panel.getByRole('button', { name: item.title, exact: true }).click();
     await expect(panel.getByRole('heading', { level: 4 })).toHaveText(item.title);
     expect((await owner.context.request.patch(`/api/workspaces/${workspace.id}/members/${accounts.editor!.id}`, { headers, data: { role: 'VIEWER' } })).status()).toBe(200);
-    await panel.getByLabel('文档标题', { exact: true }).fill('不能保存');
-    await panel.getByRole('button', { name: '保存文档标题' }).click();
+    if (action === 'rename') {
+      await panel.getByLabel('文档标题', { exact: true }).fill('不能保存');
+      await panel.getByRole('button', { name: '保存文档标题' }).click();
+    } else {
+      await panel.getByLabel('新文档标题', { exact: true }).fill('不能创建');
+      await panel.getByRole('button', { name: '创建文档', exact: true }).click();
+    }
     await expect(panel.getByRole('alert')).toHaveText('此操作需要 OWNER 或 EDITOR 权限');
     await expect(panel.getByRole('form')).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: item.title, exact: true })).toBeVisible();
+    await expect(panel).toContainText('文档写入权限已变化');
     expect((await owner.context.request.post(`/api/workspaces/${workspace.id}/documents/${item.id}/archive`, { headers, data: {} })).status()).toBe(200);
     await panel.getByRole('button', { name: item.title, exact: true }).click();
     await expect(panel.getByRole('alert')).toHaveText('文档不存在或不可访问');
     await expect(panel.getByRole('region', { name: '文档元数据' })).toHaveCount(0);
   } finally { await Promise.all([owner.context.close(), editor.context.close()]); }
 });
+}
+
+for (const action of ['rename', 'select'] as const) {
+  test(`externally archived document ${action} keeps other server documents accessible`, async ({ browser }) => {
+    const { context, page } = await login(browser);
+    try {
+      const workspace = await space(context, `archived-${action}`, '外部归档空间');
+      const a = await createDocument(context, workspace.id, '外部归档文档 A');
+      const b = await createDocument(context, workspace.id, '仍可访问文档 B');
+      const { panel } = await open(page, workspace.id);
+      await panel.getByRole('button', { name: a.title, exact: true }).click();
+      const detail = panel.getByRole('region', { name: '文档元数据' });
+      await expect(detail.getByRole('heading')).toHaveText(a.title);
+      const root = `/api/workspaces/${workspace.id}/documents`;
+      expect((await context.request.post(`${root}/${a.id}/archive`, { headers, data: {} })).status()).toBe(200);
+      // 在面板显示后创建，确保恢复使用服务器列表，而非只过滤本地数组。
+      const c = await createDocument(context, workspace.id, '服务端新增文档 C');
+      const failed = page.waitForResponse(response => response.url().endsWith(`${root}/${a.id}`)
+        && response.request().method() === (action === 'rename' ? 'PATCH' : 'GET'));
+      const refreshed: number[] = [];
+      page.on('response', response => { if (response.url().endsWith(root) && response.request().method() === 'GET') refreshed.push(response.status()); });
+      if (action === 'rename') {
+        await detail.getByLabel('文档标题', { exact: true }).fill('归档后不能保存');
+        await detail.getByRole('button', { name: '保存文档标题' }).click();
+      } else await panel.getByRole('button', { name: a.title, exact: true }).click();
+      expect((await failed).status()).toBe(404);
+      await expect(detail).toHaveCount(0);
+      await expect(panel.getByRole('button', { pressed: true })).toHaveCount(0);
+      await expect(panel.getByRole('button', { name: b.title, exact: true })).toBeVisible();
+      await expect(panel.getByRole('button', { name: a.title, exact: true })).toHaveCount(0);
+      await expect(panel.getByRole('button', { name: c.title, exact: true })).toBeVisible();
+      expect(refreshed).toEqual([200]);
+      await expect(panel.getByRole('alert')).toHaveText('文档不存在或不可访问');
+      await panel.getByRole('button', { name: b.title, exact: true }).click();
+      await expect(detail.getByRole('heading')).toHaveText(b.title);
+      await expect(panel.getByRole('alert')).toHaveCount(0);
+    } finally { await context.close(); }
+  });
+
+  test(`workspace access revoked before document ${action} clears all protected documents`, async ({ browser }) => {
+    const owner = await login(browser); const editor = await login(browser, 'editor');
+    try {
+      const workspace = await space(owner.context, `revoked-${action}`, '撤销读取权限空间');
+      expect((await owner.context.request.post(`/api/workspaces/${workspace.id}/members`, { headers, data: { email: accounts.editor!.email, role: 'EDITOR' } })).status()).toBe(201);
+      const a = await createDocument(owner.context, workspace.id, '撤权保护文档 A');
+      const b = await createDocument(owner.context, workspace.id, '撤权保护文档 B');
+      const { panel } = await open(editor.page, workspace.id, 'editor');
+      await panel.getByRole('button', { name: a.title, exact: true }).click();
+      const detail = panel.getByRole('region', { name: '文档元数据' });
+      await expect(detail.getByRole('heading')).toHaveText(a.title);
+      await expect(panel.getByRole('button', { name: b.title, exact: true })).toBeVisible();
+      expect((await owner.context.request.delete(`/api/workspaces/${workspace.id}/members/${accounts.editor!.id}`, { headers, data: {} })).status()).toBe(204);
+      const root = `/api/workspaces/${workspace.id}/documents`;
+      const failed = editor.page.waitForResponse(response => response.url().endsWith(`${root}/${a.id}`)
+        && response.request().method() === (action === 'rename' ? 'PATCH' : 'GET'));
+      const refreshed: number[] = [];
+      editor.page.on('response', response => { if (response.url().endsWith(root) && response.request().method() === 'GET') refreshed.push(response.status()); });
+      if (action === 'rename') {
+        await detail.getByLabel('文档标题', { exact: true }).fill('撤权后不能保存');
+        await detail.getByRole('button', { name: '保存文档标题' }).click();
+      } else await panel.getByRole('button', { name: a.title, exact: true }).click();
+      expect((await failed).status()).toBe(404);
+      await expect(detail).toHaveCount(0);
+      await expect(panel.getByRole('list', { name: '文档列表' })).toBeEmpty();
+      await expect.poll(() => refreshed).toEqual([404]);
+      await expect(panel.getByRole('alert')).toHaveText('工作空间不存在或不可访问');
+      await expect(panel.getByRole('button', { pressed: true })).toHaveCount(0);
+      await expect(panel.getByText('这个空间还没有文档。')).toHaveCount(0);
+      await expect(editor.page.getByTestId('current-user')).toHaveText(accounts.editor!.displayName);
+    } finally { await Promise.all([owner.context.close(), editor.context.close()]); }
+  });
+}
+
+test('access revoked between a successful write and list refresh clears protected documents without another retry', async ({ browser }) => {
+  const owner = await login(browser); const editor = await login(browser, 'editor');
+  try {
+    const workspace = await space(owner.context, 'write-revoked', '保存后撤权空间');
+    expect((await owner.context.request.post(`/api/workspaces/${workspace.id}/members`, { headers, data: { email: accounts.editor!.email, role: 'EDITOR' } })).status()).toBe(201);
+    const item = await createDocument(owner.context, workspace.id, '保存后撤权文档');
+    await createDocument(owner.context, workspace.id, '其他受保护文档');
+    const { panel } = await open(editor.page, workspace.id, 'editor');
+    await panel.getByRole('button', { name: item.title, exact: true }).click();
+    await expect(panel.getByRole('heading', { level: 4 })).toHaveText(item.title);
+    const root = `/api/workspaces/${workspace.id}/documents`;
+    await editor.page.route(`**${root}/${item.id}`, async route => {
+      const response = await route.fetch(); expect(response.status()).toBe(200);
+      expect((await owner.context.request.delete(`/api/workspaces/${workspace.id}/members/${accounts.editor!.id}`, { headers, data: {} })).status()).toBe(204);
+      await route.fulfill({ response });
+    }, { times: 1 });
+    const refreshed: number[] = [];
+    await editor.page.route(`**${root}`, async route => {
+      if (refreshed.length) { await route.abort('connectionrefused'); return; }
+      const response = await route.fetch(); refreshed.push(response.status()); await route.fulfill({ response });
+    });
+    await panel.getByRole('button', { name: '保存文档标题' }).click();
+    await expect(panel.getByRole('alert')).toHaveText('工作空间不存在或不可访问');
+    await expect(panel.getByRole('list', { name: '文档列表' })).toBeEmpty();
+    await expect(panel.getByRole('region', { name: '文档元数据' })).toHaveCount(0);
+    await expect(panel.getByText('正在保存文档…')).toHaveCount(0);
+    expect(refreshed).toEqual([404]);
+  } finally { await Promise.all([owner.context.close(), editor.context.close()]); }
+});
+
+test('network failure while recovering from a real 404 remains an error and can be retried', async ({ browser }) => {
+  const { context, page } = await login(browser);
+  try {
+    const workspace = await space(context, 'recovery-network', '恢复网络错误空间');
+    const a = await createDocument(context, workspace.id, '归档文档 A');
+    const b = await createDocument(context, workspace.id, '保留文档 B');
+    const { panel } = await open(page, workspace.id);
+    await panel.getByRole('button', { name: a.title, exact: true }).click();
+    await expect(panel.getByRole('heading', { level: 4 })).toHaveText(a.title);
+    const root = `/api/workspaces/${workspace.id}/documents`;
+    expect((await context.request.post(`${root}/${a.id}/archive`, { headers, data: {} })).status()).toBe(200);
+    await page.route(`**${root}`, route => route.abort('connectionrefused'));
+    const failed = page.waitForResponse(response => response.url().endsWith(`${root}/${a.id}`) && response.request().method() === 'PATCH');
+    await panel.getByRole('button', { name: '保存文档标题' }).click();
+    expect((await failed).status()).toBe(404);
+    await expect(panel.getByRole('region', { name: '文档元数据' })).toHaveCount(0);
+    await expect(panel.getByRole('alert')).toBeVisible();
+    await expect(panel.getByRole('alert')).not.toHaveText('文档不存在或不可访问');
+    await expect(panel.getByText('这个空间还没有文档。')).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: a.title, exact: true })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: b.title, exact: true })).toBeVisible();
+    await page.unroute(`**${root}`);
+    await panel.getByRole('button', { name: '刷新文档' }).click();
+    await expect(panel.getByRole('alert')).toHaveCount(0);
+    await panel.getByRole('button', { name: b.title, exact: true }).click();
+    await expect(panel.getByRole('heading', { level: 4 })).toHaveText(b.title);
+  } finally { await context.close(); }
+});
+
+for (const target of ['document', 'workspace'] as const) {
+  test(`late 404 recovery cannot overwrite a newer ${target} selection`, async ({ browser }) => {
+    const { context, page } = await login(browser);
+    let release!: () => void; let entered!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    try {
+      const workspace = await space(context, `race-${target}`, '恢复竞态空间');
+      const a = await createDocument(context, workspace.id, '已归档文档 A');
+      const b = await createDocument(context, workspace.id, '旧列表标题 B');
+      const next = target === 'workspace' ? await space(context, 'recovery-target', '新的工作空间') : workspace;
+      const { dialog, panel } = await open(page, workspace.id);
+      const root = `/api/workspaces/${workspace.id}/documents`;
+      expect((await context.request.post(`${root}/${a.id}/archive`, { headers, data: {} })).status()).toBe(200);
+      await page.route(`**${root}`, async route => {
+        const response = await route.fetch(); expect(response.status()).toBe(200);
+        entered(); await gate; await route.fulfill({ response });
+      }, { times: 1 });
+      await panel.getByRole('button', { name: a.title, exact: true }).click(); await started;
+      let fresh;
+      if (target === 'workspace') fresh = await createDocument(context, next.id, '新的选中文档');
+      else {
+        const response = await context.request.patch(`${root}/${b.id}`, { headers, data: { title: '新的选中文档' } });
+        expect(response.status()).toBe(200); fresh = await response.json();
+      }
+      if (target === 'workspace') await dialog.getByLabel('当前工作空间', { exact: true }).selectOption(next.id);
+      else await panel.getByRole('button', { name: '刷新文档' }).click();
+      await panel.getByRole('button', { name: fresh.title, exact: true }).click();
+      await expect(panel.getByRole('heading', { level: 4 })).toHaveText(fresh.title);
+      const completed = page.waitForResponse(response => response.url().endsWith(root) && response.request().method() === 'GET');
+      release(); await (await completed).finished();
+      await expect(panel.getByRole('button', { name: fresh.title, exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(panel.getByRole('heading', { level: 4 })).toHaveText(fresh.title);
+      await expect(panel.getByRole('button', { name: b.title, exact: true })).toHaveCount(0);
+      await expect(panel.getByRole('alert')).toHaveCount(0);
+    } finally { release(); await context.close(); }
+  });
+}
 
 test('logout, account switching and session expiry clear protected document information', async ({ browser }) => {
   const { context, page } = await login(browser);

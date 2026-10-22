@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { WorkspaceMember, WorkspaceSummary } from '@weavefield/shared';
 import { useAuth } from '../auth/AuthContext';
+import DocumentsPanel from './DocumentsPanel';
 class WorkspaceError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
@@ -143,6 +144,7 @@ function WorkspaceManager({ userId, open, onClose }: { userId: string; open: boo
             void perform(async () => { await api(`/workspaces/${detail.id}`, 'PATCH', { name: data.get('name') }); });
           }}><label>空间名称<input name="name" required maxLength={80} defaultValue={detail.name} disabled={disabled}/></label><button className="workspace-secondary" disabled={disabled}>保存空间名称</button></form>
             : <p>当前角色仅可查看空间与成员，不能管理成员或修改空间。</p>}
+          {open && <DocumentsPanel key={`${userId}:${detail.id}:${detail.role}`} workspace={detail}/>}
           <h3>成员</h3>
           <ul className="workspace-members">{members.map(member => <li key={member.user.id} data-testid="workspace-member">
             <div><strong>{member.user.displayName}{member.user.id === userId ? '（本人）' : ''}</strong><small>{member.user.email}</small><span>{member.role}</span></div>

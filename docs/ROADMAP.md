@@ -44,16 +44,28 @@
 
 M1.2 已通过 PR #2 Squash 合入 main（1c7418d），[合并后 Linux CI 39572948591](https://github.com/muddyrain/weavefield/actions/runs/39572948591) 为 success。[M1.2 报告](reports/M1.2.md) 保留当时的阶段记录，以上数量包含后续已合并审查修复。
 
-### M1.3 · Workspace 与 Membership 权限系统（本地验收）
+### M1.3 · Workspace 与 Membership 权限系统（已合并）
 
 - [x] Session Guard、明确的安全 DTO、当前用户空间列表与租户隔离
 - [x] 事务创建空间及 OWNER，OWNER 修改空间名称、按邮箱添加已有账号、管理角色和移除成员
 - [x] EDITOR / VIEWER 只读，非成员统一 404，最后 OWNER 的父行锁与事务并发保护
 - [x] React 共享真实认证状态、创建 / 切换 / 成员管理、刷新恢复、失效状态清理及移动端反馈
 - [x] Workspace API 集成及并发反向验证，原数据库 / 认证 / M0 协作回归，新增 CI 步骤
-- [ ] 人工最终审查、授权提交 / PR 与 Linux CI 验证
+- [x] 人工审查后通过 PR #3 Squash 合并，main 提交 9327af9，合并后 Linux CI 39608231601 success
 
-详见 [M1.3 报告](reports/M1.3.md)。未新增 Schema / Migration，不提供空间删除或邮件邀请；真实空间与 M0 共享演示文档明确分开。M1.4 文档 CRUD、M1 整体 OpenAPI 门槛与 M2 正式协作授权仍未完成，本轮不自动推进。
+详见 [M1.3 报告](reports/M1.3.md)（保留阶段本地记录）。未新增 Schema / Migration，不提供空间删除或邮件邀请；真实空间与 M0 共享演示文档明确分开。
+
+### M1.4 · 真实文档元数据 CRUD（本地验证，待人工审查）
+
+- [x] 五个空间内文档 API，Session / 租户 / OWNER、EDITOR、VIEWER 权限与安全 DTO
+- [x] 复用 Document 模型，随机唯一内部房间，无 Schema 或 Migration 变更
+- [x] 标题重命名、稳定列表排序及软归档；保留快照，归档后不可继续修改或重复归档
+- [x] 复用成员管理父行锁，覆盖归档 / 改名竞态及锁等待后的成员降级
+- [x] React 真实元数据管理、刷新恢复、空间 / 账号隔离、迟到响应与错误反馈
+- [x] 文档 API 集成和浏览器回归已加入本地验证，CI 增加 test:documents
+- [ ] 人工审查、授权提交 / PR 与本轮远程 Linux CI 验证
+
+实际命令与结果见 [M1.4 报告](reports/M1.4.md)，设计见 [ADR-0006](decisions/ADR-0006-document-metadata-and-archive.md)。本阶段没有正文编辑、Yjs PostgreSQL 持久化、Hocuspocus 正式权限、恢复归档或物理删除。M1 整体 OpenAPI 门槛仍未完成；不自动开始 M1.5 或 M2。
 
 ## M2 · 可靠的实时协作文档（估计 2–3 周）
 

@@ -1,6 +1,6 @@
 # Weavefield · 技术架构说明
 
-> 状态：M1.1–M1.3 已合并且 Linux CI 通过；M1.4 文档元数据 API 与前端管理已实现，当前仅本地验证、待人工审查（见 [M1.4 报告](reports/M1.4.md)）。**正式正文编辑、协作鉴权及 PostgreSQL 协作持久化仍未实现，以下协作生产流程仍为目标设计。**
+> 状态：M1.1–M1.4 已合并且最终 main Linux CI 通过；M1.5 OpenAPI 与权限契约已本地实现，验证及人工审查状态见 [M1.5 报告](reports/M1.5.md)。**正式正文编辑、协作鉴权及 PostgreSQL 协作持久化仍未实现，以下协作生产流程仍为目标设计。**
 
 ## 1. 系统分层
 
@@ -28,7 +28,7 @@ flowchart TB
 - `packages/database/prisma/schema.prisma` 是模型定义的唯一来源；`prisma/migrations` 保存初始 SQL 与迁移历史定义。初始迁移包括 10 张现有草案表，没有删除后续模型；M1.2 另增认证迁移，不修改初始迁移。`db:deploy` 应用迁移，`db:generate` 将 Prisma 6.19.3 Client 生成到 `packages/database/generated/client`，生成物不入库。
 - `packages/database/src/index.ts` 将生成类型与进程内共享 `prisma` 实例统一导出，编译为 CommonJS 供后续 NestJS 使用。导入不会立即连接；各服务管理连接生命周期，并为自身进程注入 `DATABASE_URL`。不同服务进程各有连接池，不共享跨进程单例。M1.2 的 DatabaseService 已通过 NestJS Provider 连接该实例，应用启用关闭钩子；M1.3 工作空间模块复用同一 Provider，不新建连接池。
 - `Membership` 用 `(workspaceId, userId)` 复合主键防止重复成员；新增 `userId` 索引补足按用户查询和外键删除检查。Document 的 `(workspaceId, updatedAt)` 索引用于空间内文档列表。删除空间级联删除成员关系、文档及其快照；删除用户只删除成员关系，不删除工作空间。
-- 数据库外键和唯一约束验证关系完整性，不能替代授权。Workspace 没有自动生成 owner 的数据库约束；M1.3 使用事务一起创建空间与 OWNER。M1.2 实现邮箱规范化，M1.3 在 Workspace / Membership 接口实施角色与租户检查，尚不覆盖文档等后续实体。
+- 数据库外键和唯一约束验证关系完整性，不能替代授权。Workspace 没有自动生成 owner 的数据库约束；M1.3 使用事务一起创建空间与 OWNER。M1.2 实现邮箱规范化，M1.3 在 Workspace / Membership 接口实施角色与租户检查，M1.4 已覆盖文档元数据，尚不覆盖 M2 协作连接等后续实体。
 - DocumentSnapshot（`Bytes`）、Board、BoardNode、BoardEdge、Task、EntityLink 当前仅有表结构。BoardEdge 的端点 ID、Task 的 assigneeId 和 EntityLink 的多态引用尚无目标实体外键；启用这些业务前须验证对象存在、归属及删除策略。本轮未把普通二进制字段读写等同于 Yjs PostgreSQL 持久化。
 - `packages/database/test/integration.cjs` 在显式指定的本机测试库验证真实迁移、CRUD、约束、事务和级联删除；测试不执行 reset，也不重启或清空用户已有数据库。服务重启持久化需在保留同一卷的情况下另行精确比较已提交记录。
 
@@ -66,7 +66,7 @@ sequenceDiagram
 - 创建在同一事务内写 Workspace + OWNER Membership，任一步失败全部回滚。
 - 名称和成员的所有写入在 ReadCommitted 事务内先 `SELECT ... FROM "Workspace" ... FOR UPDATE`，等待锁后重新读取操作者角色。仅 OWNER 继续；目标成员按 `(workspaceId,userId)` 读取，禁止跨租户引用。
 - 删除或降级 OWNER 前计数；最后一个 OWNER 返回 409。有两位 OWNER 时允许自降级或退出。父行锁将同空间写入串行化，ReadCommitted 保证锁等待后的查询看见最新已提交状态，防止双降级、双退出以及已经被移除的操作者继续写入。
-- `WorkspaceAccess.require` 接受事务 Client，集中成员与 OWNER 判断并由模块导出，供后续文档 API 复用；M1.4 仍须在相应资源查询中落实 workspace 归属，不能仅挂 Guard 即宣称完成文档授权。
+- `WorkspaceAccess.require` 接受事务 Client，集中成员与 OWNER 判断并由模块导出，由 M1.4 文档 API 复用，并在资源查询中进一步落实 workspace 归属；挂载 Guard 本身不能替代对象授权。
 
 React 的 `AuthProvider` 是身份唯一来源。`WorkspacePanel` 按用户 ID 隔离实例，打开时加载列表与所选空间/成员；持久化仅为按用户分组的选择 ID，不存角色或成员信息。响应序号和组件生命周期检查丢弃旧请求；401 清理认证与受保护状态，404 移除失效选择，403 显示拒绝并重新加载真实角色。窗口打开期间提供手动、聚焦和每分钟刷新；没有成员变动推送。Nova 和 M0 编辑器保持静态演示，真实空间不关联这些共享文档。
 
@@ -80,10 +80,20 @@ React 的 `AuthProvider` 是身份唯一来源。`WorkspacePanel` 按用户 ID �
 - 写入使用与成员管理相同的 Workspace 父行锁，ReadCommitted 下锁后重新验证角色。OWNER / EDITOR 可写，VIEWER 写入 403；非成员或错误空间 / 文档关系统一 404。
 - 创建使用 `doc:${randomUUID()}` 作为内部 room，数据库唯一约束是最终防线。P2002 房间冲突最多尝试三次，每次开启新事务；不能在已被 PostgreSQL 中止的事务中重试。耗尽返回 409。
 - 重命名和归档同时限定 workspaceId、documentId、archivedAt=null，使用条件更新并检查影响行数。归档仅写时间，不删除 DocumentSnapshot；归档后详情、重命名和重复归档均为 404。父行锁还保证排队期间被降级的写者按最新权限拒绝。
-- `WorkspacePanel` 在真实空间内挂载 `DocumentsPanel`；按用户、空间及角色隔离组件，关闭面板即卸载。请求序号和存活检查丢弃过期响应，包括旧 401，避免清理新会话。写入成功后重新获取列表，401 清理身份、403 隐藏过期写入口、404 清理失效详情。
+- `WorkspacePanel` 在真实空间内挂载 `DocumentsPanel`；按用户、空间及角色隔离组件，关闭面板即卸载。请求序号和存活检查丢弃过期响应，包括旧 401，避免清理新会话。写入成功后重新获取列表，401 清理身份、403 隐藏过期写入口、404 清理失效详情并重新请求列表：空间仍可读时保留其他文档；空间不可访问时清理受保护信息；网络失败显示错误，不显示为空列表。
 - UI 只显示标题、编号与时间，明确正文编辑属于 M2。真实文档不创建 Y.Doc、provider 或快照；背景 M0 演示仍使用原演示路径，关闭面板可继续体验。
 
 同空间写入串行化是沿用成员撤权协议的明确取舍；没有新增 Schema、Migration、连接池或权限框架。约束、替代方案和测试见 [ADR-0006](decisions/ADR-0006-document-metadata-and-archive.md)。
+
+### M1.5 OpenAPI 与契约验证
+
+`application.ts` 在创建应用时调用 `openapi/setup.ts`。仅当 ENABLE_OPENAPI_DOCS 精确为 1 且 NODE_ENV 为未设置 / development / test 时，SwaggerModule 扫描现有 Controller 元数据，注册 `/api-docs`（只浏览）与 `/openapi.json`。production 与未知模式强制关闭，不保留 JSON/YAML 别名或 UI 资源路由。现有 API 启动仍连接数据库；生成与读取契约不调用业务 Service、不建立 Session，也不写数据库。
+
+`openapi/api-contract.ts` 只组合 Swagger 的文档装饰器；`openapi/schemas.ts` 用独立声明反映字段白名单、trim / Unicode 长度、枚举、安全响应和错误 DTO。没有安装 ValidationPipe、class-validator 或自动 DTO 转换。Schema 的字符长度不能替代 UTF-8 字节数和 JavaScript UTF-16 单元限制，因此密码的 256 字节、邮箱原始输入的 254 单元限制另在描述中明确，真实 HTTP 测试仍为行为依据。
+
+认证声明为 `apiKey / cookie` 的 cookieSession。写请求沿用精确 Origin、JSON 和自定义头；文档路由不改变解析器、SessionGuard 或事务授权顺序。文档测试从 Nest Controller 元数据独立核对全部 18 个路由，对真实 HTTP 成功响应做 Schema 校验，并检查默认/生产关闭、字段保密和状态码优先级。原有数据库与权限并发测试继续验证业务边界。
+
+Prisma Client 仍由 database build 单一生成，database typecheck 依赖本包 build；M1.5 不修改 Turbo 任务图，不在 OpenAPI 生成中调用 db:generate。分别执行的命令仍需顺序运行，不能由外部进程并发向同一生成目录写入。M1 文档元数据不提供正文读取、Hocuspocus 正式鉴权或 Yjs PostgreSQL 持久化；这三项仍属 M2。
 
 ## 2. 开发与生产的安全边界
 
@@ -163,7 +173,7 @@ flowchart LR
 - Web 可静态部署；API 与 Collab 独立 Node 容器；Postgres 托管或 Docker。
 - M2 单实例 Hocuspocus 起步，不急于引入 Redis。未来多实例时评估分布式 Yjs 同步与存储一致性。
 - 日志：`traceId`、userId hash、workspaceId、roomId、请求耗时、错误码；敏感内容及 token 不进日志。
-- CI：独立 PostgreSQL 16 服务，Schema、数据库集成与升级、Auth / Workspace / Document API 集成、类型检查、单元测试、构建及完整 Playwright E2E。M1.4 新增步骤尚待授权提交后的真实 Linux PR 运行；失败产物仍仅上传既有白名单 Selection 数值 JSON，不上传原始 trace、截图或表单内容。
+- CI：独立 PostgreSQL 16 服务，Schema、数据库集成与升级、Auth / Workspace / Document API 集成、类型检查、单元测试、构建及完整 Playwright E2E。M1.4 最终 main Linux CI 39718582027 已通过；M1.5 新增 OpenAPI 契约检查，尚待人工审查和后续授权的远程 CI；失败产物仍仅上传既有白名单 Selection 数值 JSON，不上传原始 trace、截图或表单内容。
 - 监控：WebSocket 活跃连接数、存储失败次数、内容写入延迟、未授权请求、堆内存和文档尺寸。
 
 ## 8. 技术风险清单

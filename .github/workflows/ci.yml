@@ -42,6 +42,7 @@ jobs:
       - run: pnpm test:auth
       - run: pnpm test:workspaces
       - run: pnpm test:documents
+      - run: pnpm test:openapi
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

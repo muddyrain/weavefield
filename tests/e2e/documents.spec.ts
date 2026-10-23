@@ -408,27 +408,117 @@ for (const target of ['document', 'workspace'] as const) {
   });
 }
 
-test('logout, account switching and session expiry clear protected document information', async ({ browser }) => {
-  const { context, page } = await login(browser);
+test('logout, account switching and session expiry clear protected document information', async ({ browser }, info) => {
+  const started = Date.now();
+  const stages: { name: string; durationMs: number; completed: boolean }[] = [];
+  const http: { operation: string; status: number }[] = [];
+  const pendingHttp = new Map<import('@playwright/test').Request, string>();
+  let page: Page | undefined;
+  let context: BrowserContext | undefined;
+  let failed = false;
+  async function state() {
+    if (!page || page.isClosed()) return { pageClosed: true };
+    return page.evaluate(() => ({
+      pageClosed: false,
+      authenticated: Boolean(document.querySelector('[data-testid="current-user"]')),
+      workspaceOpen: Boolean(document.querySelector('.workspace-dialog[open]')),
+      documentDetailPresent: Boolean(document.querySelector('.document-detail')),
+    })).catch(() => ({ stateUnavailable: true }));
+  }
+  async function step<T>(name: string, operation: () => Promise<T>): Promise<T> {
+    const start = Date.now(); let completed = false;
+    try {
+      const result = await test.step(name, operation, { timeout: 15000 });
+      completed = true; return result;
+    } finally {
+      stages.push({ name, durationMs: Date.now() - start, completed });
+      if (!completed) console.info('[document-session] ' + JSON.stringify({
+        failedStage: name, elapsedMs: Date.now() - started, testTimeoutMs: info.timeout, stages, http,
+        pendingHttp: [...pendingHttp.values()], state: await state(),
+      }));
+    }
+  }
+  function operationFor(url: string) {
+    const route = new URL(url).pathname;
+    return route === '/api/auth/me' ? 'page-session-check'
+      : route === '/api/auth/logout' ? 'page-logout'
+        : /^\/api\/workspaces\/[^/]+\/documents$/.test(route) ? 'page-document-list' : undefined;
+  }
   try {
-    const workspace = await space(context, 'session', '账号隔离空间'); await createDocument(context, workspace.id, '前一账号私有标题');
-    let { dialog, panel } = await open(page, workspace.id);
-    await panel.getByRole('button', { name: '前一账号私有标题', exact: true }).click();
-    await expect(panel.getByRole('heading', { level: 4 })).toHaveText('前一账号私有标题');
-    await dialog.getByRole('button', { name: '关闭工作空间' }).click();
-    await page.getByRole('button', { name: '退出', exact: true }).click();
-    await expect(page.getByTestId('current-user')).toHaveCount(0); await expect(page.getByText('前一账号私有标题', { exact: true })).toHaveCount(0);
-    const outsider = accounts.outsider!;
-    expect((await context.request.post(`${authBase}/auth/login`, { headers, data: { email: outsider.email, password } })).status()).toBe(200);
-    await page.reload(); await page.getByRole('button', { name: outsider.displayName, exact: true }).click();
-    await expect(page.getByRole('dialog')).not.toContainText('前一账号私有标题');
-    expect((await context.request.get(`/api/workspaces/${workspace.id}/documents`)).status()).toBe(404);
-    expect((await context.request.post(`${authBase}/auth/login`, { headers, data: { email: accounts.owner!.email, password } })).status()).toBe(200);
-    await page.reload(); ({ dialog, panel } = await open(page, workspace.id));
-    await prisma.session.updateMany({ where: { userId: accounts.owner!.id }, data: { expiresAt: new Date(0) } });
-    await panel.getByRole('button', { name: '刷新文档' }).click();
-    await expect(dialog).not.toBeVisible(); await expect(page.getByTestId('current-user')).toHaveCount(0);
-  } finally { await context.close(); }
+    await step('owner-login', async () => {
+      ({ context, page } = await login(browser));
+      page.on('request', request => { const operation = operationFor(request.url()); if (operation) pendingHttp.set(request, operation); });
+      page.on('response', response => {
+        const operation = operationFor(response.url());
+        if (operation) http.push({ operation, status: response.status() });
+        pendingHttp.delete(response.request());
+      });
+      page.on('requestfailed', request => { pendingHttp.delete(request); });
+    });
+    // 仅记录阶段、耗时、状态码和布尔状态；不记录 Cookie、账号、请求体或 DOM。
+    const client = context!; const currentPage = page!;
+    const workspace = await step('create-workspace-and-document', async () => {
+      const workspace = await space(client, 'session', '账号隔离空间');
+      await createDocument(client, workspace.id, '前一账号私有标题'); return workspace;
+    });
+    let dialog: Locator; let panel: Locator;
+    await step('open-private-document', async () => {
+      ({ dialog, panel } = await open(currentPage, workspace.id));
+      await panel.getByRole('button', { name: '前一账号私有标题', exact: true }).click();
+      await expect(panel.getByRole('heading', { level: 4 })).toHaveText('前一账号私有标题');
+    });
+    await step('close-workspace', async () => { await dialog.getByRole('button', { name: '关闭工作空间' }).click(); });
+    await step('logout', async () => { await currentPage.getByRole('button', { name: '退出', exact: true }).click(); });
+    await step('verify-logout-clears-private-state', async () => {
+      await expect(currentPage.getByTestId('current-user')).toHaveCount(0);
+      await expect(currentPage.getByText('前一账号私有标题', { exact: true })).toHaveCount(0);
+      const response = await client.request.get('/api/auth/me'); http.push({ operation: 'logged-out-session', status: response.status() });
+      expect(response.status()).toBe(401);
+    });
+    async function switchAccount(actor: 'owner' | 'outsider') {
+      const account = accounts[actor]!;
+      await step(`login-${actor}`, async () => {
+        const response = await client.request.post(`${authBase}/auth/login`, { headers, data: { email: account.email, password } });
+        http.push({ operation: `login-${actor}`, status: response.status() }); expect(response.status()).toBe(200);
+        const me = await client.request.get('/api/auth/me'); http.push({ operation: `server-session-${actor}`, status: me.status() });
+        expect(me.status()).toBe(200); expect((await me.json()).user.id).toBe(account.id);
+      });
+      await step(`reload-${actor}`, async () => { await currentPage.reload(); });
+      await step(`verify-page-identity-${actor}`, async () => { await expect(currentPage.getByTestId('current-user')).toHaveText(account.displayName); });
+    }
+    await switchAccount('outsider');
+    await step('verify-outsider-isolation', async () => {
+      await currentPage.getByRole('button', { name: accounts.outsider!.displayName, exact: true }).click();
+      await expect(currentPage.getByRole('dialog')).not.toContainText('前一账号私有标题');
+      const response = await client.request.get(`/api/workspaces/${workspace.id}/documents`);
+      http.push({ operation: 'outsider-document-list', status: response.status() }); expect(response.status()).toBe(404);
+    });
+    await switchAccount('owner');
+    await step('reopen-owner-workspace', async () => { ({ dialog, panel } = await open(currentPage, workspace.id)); });
+    await step('expire-database-session', async () => {
+      const expired = await prisma.session.updateMany({ where: { userId: accounts.owner!.id }, data: { expiresAt: new Date(0) } });
+      expect(expired.count).toBeGreaterThan(0);
+    });
+    await step('refresh-expired-document-list', async () => { await panel.getByRole('button', { name: '刷新文档' }).click(); });
+    await step('verify-expiry-clears-private-state', async () => {
+      await expect(dialog).not.toBeVisible(); await expect(currentPage.getByTestId('current-user')).toHaveCount(0);
+      await expect(currentPage.getByText('前一账号私有标题', { exact: true })).toHaveCount(0);
+      const response = await client.request.get(`/api/workspaces/${workspace.id}/documents`);
+      http.push({ operation: 'expired-document-list', status: response.status() }); expect(response.status()).toBe(401);
+    });
+  } catch (error) { failed = true; throw error; }
+  finally {
+    // 保留首个阶段错误；清理错误单独记录，不能覆盖真正失败的位置。
+    const finalState = await state();
+    try { if (context) await step('close-context', () => context!.close()); }
+    catch (error) { if (!failed) throw error; }
+    finally {
+      const diagnostics = { elapsedMs: Date.now() - started, testTimeoutMs: info.timeout, stages, http,
+        pendingHttp: [...pendingHttp.values()], state: finalState };
+      await info.attach('document-session-diagnostics', { body: JSON.stringify(diagnostics), contentType: 'application/json' });
+      console.info('[document-session] ' + JSON.stringify(diagnostics));
+    }
+  }
 });
 
 test('mobile document metadata keeps controls visible and inside the dialog', async ({ browser }, info) => {

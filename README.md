@@ -14,7 +14,8 @@ Weavefield 是一个面向 2–8 人小团队的实时协作工作台：**多人
 - [x] M1.1 PostgreSQL 16 / Prisma 基础设施已通过 PR #1 合入 main，Linux CI 已通过（见 [M1.1 报告](docs/reports/M1.1.md)）
 - [x] M1.2 密码认证、数据库 Session 与 React 登录交互已通过 PR #2 合入 main，Linux CI 已通过（见 [M1.2 报告](docs/reports/M1.2.md)）
 - [x] M1.3 工作空间、成员管理与服务端 RBAC 已通过 PR #3 合并，合并后 Linux CI 通过（见 [阶段报告](docs/reports/M1.3.md)）
-- [x] M1.4 真实文档元数据创建、列表、详情、重命名与归档已实现，当前仅本地验证、待人工审查（见 [M1.4 报告](docs/reports/M1.4.md)）
+- [x] M1.4 文档元数据 CRUD 已经 PR #4 / #5 合并，最终 main Linux CI 39718582027 通过（见[路线图](docs/ROADMAP.md)；[历史阶段报告](docs/reports/M1.4.md)保持原记录）
+- [x] M1.5 OpenAPI 与权限契约本地实现完成；验收证据和人工审查状态见 [M1.5 报告](docs/reports/M1.5.md)，本轮尚未提交或执行新的 GitHub Actions
 - [ ] **正式正文编辑、协作鉴权及 Yjs PostgreSQL 持久化尚未实现**；Workspace 角色不会授予 M0 协作权限
 - [x] GitHub 仓库已创建，本地 `origin` 已配置
 - [x] M0 及后续测试、演示体验修复已推送，Linux GitHub Actions 已通过
@@ -302,10 +303,59 @@ git ls-remote origin
 
 ## 技术决策 / 参考
 
-- BlockNote Yjs 协作：https://www.blocknotejs.org/docs/features/collaboration
-- Hocuspocus v4：https://tiptap.dev/docs/hocuspocus/server/configuration
-- Hocuspocus 二进制持久化：https://tiptap.dev/docs/hocuspocus/guides/persistence
-- Prisma v6 文档：https://www.prisma.io/docs/orm/v6/prisma-client/setup-and-configuration/generating-prisma-client
-- Turborepo workspace：https://turborepo.dev/docs/crafting-your-repository/structuring-a-repository
+- [BlockNote Yjs 协作](https://www.blocknotejs.org/docs/features/collaboration)
+- [Hocuspocus v4](https://tiptap.dev/docs/hocuspocus/server/configuration)
+- [Hocuspocus 二进制持久化](https://tiptap.dev/docs/hocuspocus/guides/persistence)
+- [Prisma v6 文档](https://www.prisma.io/docs/orm/v6/prisma-client/setup-and-configuration/generating-prisma-client)
+- [Turborepo workspace](https://turborepo.dev/docs/crafting-your-repository/structuring-a-repository)
 
 > 本项目为 AI 辅助开发学习/作品集工程，技术选择需以真实运行和测试结果为准，不能因为代码是 AI 生成就跳过验证。
+
+## M1.5：本地 OpenAPI 与权限契约
+
+API 使用 `@nestjs/swagger` 11.4.7 从真实 NestJS Controller 注解生成 OpenAPI 3.0，覆盖 Auth 4、Workspace / Membership 8、Document 5、Health 1，共 18 个操作。声明模型仅用于文档；输入仍由原手写验证函数处理，不引入自动校验 Pipe，不改变 Cookie、CSRF 或 RBAC。
+
+默认关闭文档。仅在本地开发中，显式设置 `ENABLE_OPENAPI_DOCS=1` 后启动 API：
+
+```bash
+ENABLE_OPENAPI_DOCS=1 pnpm dev:api
+```
+
+PowerShell 使用 `$env:ENABLE_OPENAPI_DOCS='1'` 后运行 `pnpm dev:api`，或在已忽略的 `apps/api/.env` 中手动添加该开关；不要覆盖已有文件。允许未设置 NODE_ENV、development 或 test；production 和其他模式即使设置开关也不注册文档路由。启动端口保持默认时：
+
+- [Swagger UI](http://127.0.0.1:3001/api-docs)：只浏览，禁用 Try it out、授权持久化及外部在线 validator。
+- [OpenAPI JSON](http://127.0.0.1:3001/openapi.json)：结构化契约，不包含真实用户、Session 或数据库数据。
+
+关闭时以上端点以及 UI 静态资源均为 404；不提供默认 JSON/YAML 别名。文档开关在启动时读取，修改后需重启 API。本轮不提供公网 Swagger UI，也不代表已经过生产部署审查。
+
+### Cookie 与写请求示例
+
+认证使用 HttpOnly Cookie Session，**不是 JWT Bearer**。注册和登录设置 Cookie，浏览器自动携带；密码和 Session 不应放进 URL、日志或 Swagger 输入框。生产 __Host- Cookie 仍遵循现有 HTTPS 配置，但生产文档始终关闭。
+
+所有写请求必须发送精确的 WEB_ORIGIN、`Content-Type: application/json` 和 `X-Weavefield-Request: 1`，拒绝 `Sec-Fetch-Site: cross-site`。JSON 最大 4 KiB。正常字段禁止未知项；logout 是例外，允许无请求体并忽略合法 JSON 对象/数组。移除成员和归档文档要求 JSON 空对象 `{}`。
+
+在权限受限的本地文件中准备登录 JSON（email、password），避免把真实密码直接写入命令历史。以下 Bash 示例使用临时 Cookie jar；路径及 workspaceId 由调用者替换，WEB_ORIGIN 必须与 API 配置完全一致：
+
+```bash
+umask 077
+session_jar="$(mktemp)"
+trap 'rm -f "$session_jar"' EXIT
+curl --fail --silent --show-error -c "$session_jar" \
+  -H 'Origin: http://127.0.0.1:5173' \
+  -H 'Content-Type: application/json' -H 'X-Weavefield-Request: 1' \
+  --data-binary @/path/to/private/login.json http://127.0.0.1:3001/auth/login
+curl --fail --silent --show-error -b "$session_jar" http://127.0.0.1:3001/workspaces
+curl --fail --silent --show-error -b "$session_jar" \
+  -H 'Origin: http://127.0.0.1:5173' \
+  -H 'Content-Type: application/json' -H 'X-Weavefield-Request: 1' \
+  --data '{"title":"本地验收文档"}' \
+  http://127.0.0.1:3001/workspaces/REPLACE_WORKSPACE_ID/documents
+```
+
+OWNER 管理空间和成员；OWNER / EDITOR 写文档，VIEWER 只读。非成员与不存在空间统一 404。JSON 解析先于认证，错误 JSON / 超大请求先返回 400 / 413；受保护路由再按 Session（401）、写来源（403）、输入（400）、成员/资源/角色顺序检查。文档修改先确认文档存在且未归档，再判断可写角色，因此失效文档即使由 VIEWER 修改也先返回 404。完整矩阵、输入长度与已知限制见 [M1.5 报告](docs/reports/M1.5.md)及 OpenAPI。
+
+```bash
+pnpm test:openapi
+```
+
+该入口与现有 API 集成测试一样，要求独立 PostgreSQL 16 测试库及安全的 DATABASE_TEST_URL；自动化覆盖文档启停、生产关闭、真实路由/Schema/状态码、敏感字段和生成无业务副作用。CI 增加同一入口，保留全部既有检查；本地通过不等于尚未提交的 GitHub Actions 已通过。

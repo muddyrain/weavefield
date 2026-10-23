@@ -19,7 +19,8 @@
     "db:migrate": "pnpm --filter @weavefield/database db:migrate",
     "test:auth": "pnpm --filter @weavefield/api test:integration",
     "test:workspaces": "pnpm --filter @weavefield/api test:workspaces",
-    "test:documents": "pnpm --filter @weavefield/api test:documents"
+    "test:documents": "pnpm --filter @weavefield/api test:documents",
+    "test:openapi": "pnpm --filter @weavefield/api test:openapi"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

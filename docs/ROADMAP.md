@@ -55,7 +55,7 @@ M1.2 已通过 PR #2 Squash 合入 main（1c7418d），[合并后 Linux CI 39572
 
 详见 [M1.3 报告](reports/M1.3.md)（保留阶段本地记录）。未新增 Schema / Migration，不提供空间删除或邮件邀请；真实空间与 M0 共享演示文档明确分开。
 
-### M1.4 · 真实文档元数据 CRUD（本地验证，待人工审查）
+### M1.4 · 真实文档元数据 CRUD（已合并并通过最终 Linux CI）
 
 - [x] 五个空间内文档 API，Session / 租户 / OWNER、EDITOR、VIEWER 权限与安全 DTO
 - [x] 复用 Document 模型，随机唯一内部房间，无 Schema 或 Migration 变更
@@ -63,9 +63,22 @@ M1.2 已通过 PR #2 Squash 合入 main（1c7418d），[合并后 Linux CI 39572
 - [x] 复用成员管理父行锁，覆盖归档 / 改名竞态及锁等待后的成员降级
 - [x] React 真实元数据管理、刷新恢复、空间 / 账号隔离、迟到响应与错误反馈
 - [x] 文档 API 集成和浏览器回归已加入本地验证，CI 增加 test:documents
-- [ ] 人工审查、授权提交 / PR 与本轮远程 Linux CI 验证
+- [x] 人工审查，PR #4 合并及 PR #5 生成竞态修复，最终 main Linux CI 全部通过
 
-实际命令与结果见 [M1.4 报告](reports/M1.4.md)，设计见 [ADR-0006](decisions/ADR-0006-document-metadata-and-archive.md)。本阶段没有正文编辑、Yjs PostgreSQL 持久化、Hocuspocus 正式权限、恢复归档或物理删除。M1 整体 OpenAPI 门槛仍未完成；不自动开始 M1.5 或 M2。
+[PR #4](https://github.com/muddyrain/weavefield/pull/4) Squash 为 cdb1d5954e50fe1c51dc95c7be0d03020d55fa96；其合并后 CI 39713193967 在生成的 Prisma 类型中出现 TS1005。随后 [PR #5](https://github.com/muddyrain/weavefield/pull/5) 将生成改为单一任务，Squash 为 b6747406f165bb12c4cbcc60b8497d81cd767998，[最终 main Linux CI 39718582027](https://github.com/muddyrain/weavefield/actions/runs/39718582027) success，包含完整 E2E 36/36。并发生成是有执行日志支持的高概率历史根因，未取得失败瞬间文件快照。
+
+原阶段命令与结果见 [M1.4 报告](reports/M1.4.md)（保留当时记录），设计见 [ADR-0006](decisions/ADR-0006-document-metadata-and-archive.md)。本阶段没有正文编辑、Yjs PostgreSQL 持久化、Hocuspocus 正式权限、恢复归档或物理删除。OpenAPI 和 M1 总验收在下述 M1.5 收尾，不自动进入 M2。
+
+### M1.5 · OpenAPI、权限回归与 M1 验收（本地实现，待人工审查）
+
+- [x] 18 个现有 REST 操作的 OpenAPI 3 / Swagger UI，Cookie 和写请求契约
+- [x] 默认关闭、显式本地启用、production 强制关闭，声明不改变运行时校验
+- [x] 明确 Auth / Workspace / Membership / Document 权限矩阵及 401 / 403 / 404 顺序
+- [x] 新增独立 OpenAPI 检查并接入 CI，保留既有集成测试及 36 项 E2E
+- [x] macOS / Linux ARM64 完整本地验收：OpenAPI 9/9、Auth 12/12、Workspace 10/10、Document 17/17、单测 19/19、typecheck、build、E2E 36/36；见 [M1.5 报告](reports/M1.5.md)
+- [ ] 人工审查、后续授权的提交 / PR 和新增 CI 验证
+
+M1.1–M1.4 的远程验收已完成。M1.5 本地结果与后续 GitHub Actions 分别记录；在最终验收及人工审查完成前，不把 M1 整体标为正式交付。M2 正文、协作鉴权及 Yjs PostgreSQL 持久化均未开始。
 
 ## M2 · 可靠的实时协作文档（估计 2–3 周）
 

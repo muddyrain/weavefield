@@ -108,7 +108,8 @@ test('Cookie Session, required write headers, input fields and resource paramete
   assert.equal(schemas.AddMemberInput.properties.role.default, 'VIEWER');
   assert.deepEqual(schemas.ChangeRoleInput.properties.role.enum, ['OWNER', 'EDITOR', 'VIEWER']);
   assert.equal(schemas.LoginInput.properties.password.writeOnly, true);
-  assert.equal(schemas.LoginInput.properties.password.minLength, 12);
+  assert.equal(schemas.LoginInput.properties.password.minLength, 8);
+  assert.equal(schemas.RegisterInput.properties.password.minLength, 8);
   assert.equal(schemas.LoginInput.properties.password.maxLength, 128);
   assert.match(schemas.LoginInput.properties.password.description, /256/);
   // 429 / 503 的真实 HTTP 行为由既有 Auth 集成用例验证，这里确保它们未漏出契约。
@@ -210,6 +211,12 @@ test('trimmed Unicode input boundaries agree with schemas and the unchanged HTTP
     await response(ws, '/workspaces/{workspaceId}/documents', 'POST', 400, { body });
   }
   const loginSchema = document.components.schemas.LoginInput;
+  for (const password of ['s'.repeat(7), '😀abcdef', 's'.repeat(8), '😀abcdefg']) {
+    const body = { email: 'password-boundary@example.invalid', password };
+    const accepted = Array.from(password).length >= 8;
+    assert.equal(ajv.compile(loginSchema)(body), accepted);
+    await response('/auth/login', '/auth/login', 'POST', accepted ? 401 : 400, { cookie: null, body });
+  }
   for (const body of [{ email: 'invalid', password: 's'.repeat(12) }, { email: 'a@b.c', password: 'short' }, { email: 'a@b.c', password: 's'.repeat(129) }]) {
     assert.equal(ajv.compile(loginSchema)(body), false);
     await response('/auth/login', '/auth/login', 'POST', 400, { cookie: null, body });

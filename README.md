@@ -174,7 +174,7 @@ docker compose --env-file infra/.env.test -p weavefield-m11-test -f infra/docker
 | GET /auth/me | 200 返回 user 和 sessionExpiresAt；未登录、过期、撤销返回 401 |
 | POST /auth/logout | 204，撤销当前服务端 Session 并清 Cookie，支持幂等退出 |
 
-所有 POST 使用 JSON、`X-Weavefield-Request: 1` 和精确 Origin。响应仅含用户 id/email/displayName 与过期时间，不含 passwordHash 或 Token；Token 仅经 HttpOnly Cookie 传递，数据库只存摘要。密码 12–128 个字符、UTF-8 最多 256 字节；JSON 最多 4 KiB。昵称 1–50 个字符。触发基础限流返回 429。
+所有 POST 使用 JSON、`X-Weavefield-Request: 1` 和精确 Origin。响应仅含用户 id/email/displayName 与过期时间，不含 passwordHash 或 Token；Token 仅经 HttpOnly Cookie 传递，数据库只存摘要。密码 8–128 个字符、UTF-8 最多 256 字节；JSON 最多 4 KiB。昵称 1–50 个字符。触发基础限流返回 429。
 
 生产 NODE_ENV=production 强制 HTTPS WEB_ORIGIN、Secure 的 __Host- Cookie（HttpOnly / SameSite=Lax / Path=/，不设置 Domain）。本轮仅完成配置和接口验证，不代表已搭建 HTTPS 或完成生产部署；多实例共享限流、密码找回、邮箱验证与过期 Session 清理尚未实现。详见 [ADR-0004](docs/decisions/ADR-0004-database-cookie-sessions.md)。M0 Collab 仍禁止公网部署。
 

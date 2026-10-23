@@ -6,9 +6,9 @@ export function authInput(value: unknown, register: boolean) {
   const allowed = register ? ['email', 'password', 'displayName'] : ['email', 'password'];
   if (Object.keys(input).some(key => !allowed.includes(key))) throw new BadRequestException('表单包含不支持的字段');
   const email = normalizeEmail(input.email);
-  if (typeof input.password !== 'string' || Array.from(input.password).length < 12
+  if (typeof input.password !== 'string' || Array.from(input.password).length < 8
     || Array.from(input.password).length > 128 || Buffer.byteLength(input.password, 'utf8') > 256) {
-    throw new BadRequestException('密码须为 12–128 个字符，UTF-8 编码不超过 256 字节');
+    throw new BadRequestException('密码须为 8–128 个字符，UTF-8 编码不超过 256 字节');
   }
   const displayName = typeof input.displayName === 'string' ? input.displayName.trim() : '';
   if (register && (!displayName || Array.from(displayName).length > 50 || /[\u0000-\u001f\u007f]/.test(displayName))) {

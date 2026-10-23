@@ -52,6 +52,24 @@ test('register creates a real user and an HttpOnly session without exposing cred
   assert.notEqual(session.tokenHash, aliceCookie.split('=')[1]);
 });
 
+test('passwords require eight Unicode characters and still enforce the existing upper bounds', async () => {
+  const probeEmail = `${run}-password-boundary@example.invalid`;
+  for (const value of ['x'.repeat(7), '😀abcdef', 'x'.repeat(129), '织'.repeat(100)]) {
+    assert.equal((await request('register', { method: 'POST', body: {
+      email: probeEmail, password: value, displayName: 'Password boundary',
+    } })).status, 400);
+    assert.equal((await request('login', { method: 'POST', body: { email: probeEmail, password: value } })).status, 400);
+  }
+  // 同时覆盖 ASCII 与含代理对的八个 Unicode 字符，不能误按 UTF-16 code unit 计数。
+  for (const [index, boundaryPassword] of ['abcdefgh', '😀abcdefg'].entries()) {
+    const email = `${run}-password-boundary-${index}@example.invalid`;
+    assert.equal((await request('register', { method: 'POST', body: {
+      email, password: boundaryPassword, displayName: 'Password boundary',
+    } })).status, 201);
+    assert.equal((await request('login', { method: 'POST', body: { email, password: boundaryPassword } })).status, 200);
+  }
+});
+
 test('anonymous, forged and nonexistent sessions return 401', async () => {
   for (const cookie of [undefined, 'weavefield_session=invalid', `weavefield_session=${'z'.repeat(43)}`]) {
     assert.equal((await request('me', { cookie })).status, 401);

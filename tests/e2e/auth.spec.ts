@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 const localRequire = createRequire(path.resolve('package.json'));
 const run = `browser-${randomUUID()}`;
-const password = 'Browser secure password 42!';
+const password = 'Demo123!';
 const email = `${run}@example.invalid`;
 const { prepareDatabase } = localRequire('./tests/helpers/database.cjs');
 let prisma: Awaited<ReturnType<typeof prepareDatabase>>;
@@ -28,9 +28,9 @@ test('real registration, refresh, logout and login preserve only valid session s
   await dialog.getByRole('button', { name: '还没有账号？注册' }).click();
   await dialog.getByLabel('昵称', { exact: true }).fill('织域开发者');
   await dialog.getByLabel('邮箱', { exact: true }).fill(email);
-  await dialog.getByLabel('密码', { exact: true }).fill('short');
+  await dialog.getByLabel('密码', { exact: true }).fill('short12');
   await dialog.getByRole('button', { name: '注册并登录', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('12–128');
+  await expect(dialog.getByRole('alert')).toContainText('8–128');
   await dialog.getByLabel('密码', { exact: true }).fill(password);
   await dialog.getByRole('button', { name: '注册并登录', exact: true }).click();
   await expect(page.getByTestId('current-user')).toHaveText('织域开发者');

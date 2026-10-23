@@ -24,8 +24,8 @@ export default function AuthPanel({ onOpenWorkspaces }: { onOpenWorkspaces: () =
     const email = String(form.get('email') ?? '').trim().toLowerCase();
     const password = String(form.get('password') ?? '');
     const displayName = String(form.get('displayName') ?? '').trim();
-    if (Array.from(password).length < 12 || Array.from(password).length > 128 || new TextEncoder().encode(password).length > 256) {
-      setError('密码须为 12–128 个字符，UTF-8 编码不超过 256 字节'); return;
+    if (Array.from(password).length < 8 || Array.from(password).length > 128 || new TextEncoder().encode(password).length > 256) {
+      setError('密码须为 8–128 个字符，UTF-8 编码不超过 256 字节'); return;
     }
     if (mode === 'register' && (!displayName || Array.from(displayName).length > 50)) { setError('昵称须为 1–50 个字符'); return; }
     cancelRefresh(); setPending(true); setError(''); setNotice('');
@@ -69,7 +69,7 @@ export default function AuthPanel({ onOpenWorkspaces }: { onOpenWorkspaces: () =
         {mode === 'register' && <label>昵称<input name="displayName" autoComplete="nickname" required maxLength={50} disabled={pending}/></label>}
         <label>邮箱<input name="email" type="email" autoFocus autoComplete="email" required maxLength={254} disabled={pending}/></label>
         <label>密码<input name="password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required disabled={pending} aria-describedby="password-help"/></label>
-        <small id="password-help">12–128 个字符，UTF-8 编码不超过 256 字节。</small>
+        <small id="password-help">8–128 个字符，UTF-8 编码不超过 256 字节。</small>
         {error && <p role="alert" className="auth-error">{error}</p>}
         <button className="auth-submit" disabled={pending}>{pending ? '正在验证…' : mode === 'login' ? '登录' : '注册并登录'}</button>
       </form>

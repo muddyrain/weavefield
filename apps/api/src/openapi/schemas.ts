@@ -18,8 +18,8 @@ function trimmedText(max: number, controlsBeforeTrim: boolean): SchemaObject {
   return { type: 'string', pattern: `^${padding}${edge}(?:[^\\u0000-\\u001f\\u007f]{0,${max - 2}}${edge})?${padding}$`,
     description: `trim 后为 1–${max} 个 Unicode 字符；${controlsBeforeTrim ? '原始输入' : 'trim 后'}不能含 U+0000–001F、U+007F 控制字符。` };
 }
-const password: SchemaObject = { type: 'string', format: 'password', writeOnly: true, minLength: 12, maxLength: 128,
-  description: '12–128 个 Unicode 字符，另受 UTF-8 最多 256 字节限制；不 trim、不回显。' };
+const password: SchemaObject = { type: 'string', format: 'password', writeOnly: true, minLength: 8, maxLength: 128,
+  description: '8–128 个 Unicode 字符，另受 UTF-8 最多 256 字节限制；不 trim、不回显。' };
 
 export const schemas = {
   RegisterInput: object({ email, password, displayName: trimmedText(50, false) }),

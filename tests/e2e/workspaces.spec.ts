@@ -4,6 +4,9 @@ import path from 'node:path';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 const localRequire = createRequire(path.resolve('package.json'));
 const { prepareDatabase } = localRequire('./tests/helpers/database.cjs');
+const apiRequire = createRequire(path.resolve('apps/api/package.json'));
+// 此文件包含真实登录；只保留白名单诊断，不生成含凭据的原始 Trace。
+test.use({ trace: 'off' });
 const run = `uiws-${randomUUID()}`;
 const password = 'Workspace browser password 42!';
 const headers = { Origin: 'http://127.0.0.1:15173', 'X-Weavefield-Request': '1' };
@@ -12,23 +15,35 @@ const accounts = {
   colleague: { email: `${run}-colleague@example.invalid`, displayName: '空间同事', id: '' },
 };
 let prisma: Awaited<ReturnType<typeof prepareDatabase>>;
-test.beforeAll(async ({ browser }) => {
+let authApi: { close(): Promise<void> } | undefined;
+let authBase: string;
+async function startAuthApi() {
+  // 仅隔离测试实例的限流计数；仍使用真实认证服务、Cookie 与数据库 Session。
+  apiRequire('reflect-metadata'); process.env.WEB_ORIGIN = headers.Origin;
+  const app = await apiRequire('./dist/application').createApplication(); authApi = app;
+  await app.listen(0, '127.0.0.1'); authBase = await app.getUrl();
+}
+test.beforeAll(async ({ browser }, info) => {
   prisma = await prepareDatabase();
+  await startAuthApi();
   for (const account of Object.values(accounts)) {
     const context = await browser.newContext();
     try {
-      const response = await context.request.post('/api/auth/register', { headers, data: { email: account.email, displayName: account.displayName, password } });
+      const response = await context.request.post(`${authBase}/auth/register`, { headers, data: { email: account.email, displayName: account.displayName, password } });
+      console.info('[workspace-auth] ' + JSON.stringify({ operation: 'register', workerIndex: info.workerIndex, status: response.status() }));
       expect(response.status()).toBe(201); account.id = (await response.json()).user.id;
     } finally { await context.close(); }
   }
 });
+test.beforeEach(async () => { await authApi?.close(); await startAuthApi(); });
 test.afterEach(async () => { await prisma.workspace.deleteMany({ where: { slug: { startsWith: run } } }); });
 test.afterAll(async () => {
-  if (prisma) { await prisma.user.deleteMany({ where: { email: { startsWith: run } } }); await prisma.$disconnect(); }
+  try { if (prisma) await prisma.user.deleteMany({ where: { email: { startsWith: run } } }); }
+  finally { if (authApi) await authApi.close(); if (prisma) await prisma.$disconnect(); }
 });
 async function login(browser: Browser, actor: keyof typeof accounts = 'owner') {
   const context = await browser.newContext();
-  const response = await context.request.post('/api/auth/login', { headers, data: { email: accounts[actor].email, password } });
+  const response = await context.request.post(`${authBase}/auth/login`, { headers, data: { email: accounts[actor].email, password } });
   expect(response.status()).toBe(200);
   const page = await context.newPage(); await page.goto('/?doc=workspace-demo');
   await expect(page.getByTestId('current-user')).toHaveText(accounts[actor].displayName);
@@ -74,7 +89,12 @@ async function createSpace(context: BrowserContext, suffix: string, name = '成�
 async function selectSpace(page: Page, id: string, actor: keyof typeof accounts = 'owner') {
   const dialog = await open(page, actor);
   await dialog.getByLabel('当前工作空间', { exact: true }).selectOption(id);
-  await expect(dialog.getByTestId('workspace-role')).toBeVisible(); return dialog;
+  await expect(dialog.getByTestId('workspace-role')).toBeVisible();
+  // 角色出现时，子面板的初始鉴权请求可能尚未完成；过期 Session 前先等待其落地。
+  const documents = dialog.getByRole('region', { name: '空间文档', exact: true });
+  await expect(documents).toBeVisible();
+  await expect(documents.getByText('正在加载文档…', { exact: true })).toHaveCount(0);
+  return dialog;
 }
 
 test('owner manages real members while editor, viewer and removed users see the correct access', async ({ browser }) => {
@@ -125,26 +145,83 @@ test('stale owner controls show server rejection and refresh the actual role', a
   } finally { await Promise.all([owner.context.close(), colleague.context.close()]); }
 });
 
-test('expired and logged-out sessions clear protected workspace state and stored selection', async ({ browser }) => {
-  const { context, page } = await login(browser);
+test('expired and logged-out sessions clear protected workspace state and stored selection', async ({ browser }, info) => {
+  const started = Date.now();
+  const stages: { name: string; durationMs: number; completed: boolean }[] = [];
+  const http: { operation: string; status: number }[] = [];
+  let context: BrowserContext | undefined;
+  let failed = false;
+  async function step<T>(name: string, operation: () => Promise<T>): Promise<T> {
+    const start = Date.now(); let completed = false;
+    try {
+      const result = await test.step(name, operation, { timeout: 15000 });
+      completed = true; return result;
+    } finally {
+      stages.push({ name, durationMs: Date.now() - start, completed });
+      // 白名单阶段名、耗时和状态码；不输出 Cookie、密码、请求体或原始 Trace。
+      console.info('[workspace-session] ' + JSON.stringify({ ...stages[stages.length - 1], http }));
+    }
+  }
   try {
-    const space = await createSpace(context, 'expiry');
-    let dialog = await selectSpace(page, space.id);
-    await prisma.session.updateMany({ where: { userId: accounts.owner.id }, data: { expiresAt: new Date(0) } });
-    await dialog.getByRole('button', { name: '刷新工作空间', exact: true }).click();
-    await expect(dialog).not.toBeVisible();
-    await expect(page.getByTestId('current-user')).toHaveCount(0);
-    expect(await page.evaluate(id => localStorage.getItem(`weavefield.workspace.${id}`), accounts.owner.id)).toBeNull();
-    expect((await context.request.get(`/api/workspaces/${space.id}`)).status()).toBe(401);
-    expect((await context.request.post('/api/auth/login', { headers, data: { email: accounts.owner.email, password } })).status()).toBe(200);
-    await page.reload(); dialog = await selectSpace(page, space.id);
-    await dialog.getByRole('button', { name: '关闭工作空间', exact: true }).click();
-    await page.getByRole('button', { name: '退出', exact: true }).click();
-    await expect(page.getByTestId('current-user')).toHaveCount(0);
-    await expect(page.getByRole('dialog', { name: '我的工作空间' })).toHaveCount(0);
-    expect(await page.evaluate(id => localStorage.getItem(`weavefield.workspace.${id}`), accounts.owner.id)).toBeNull();
-    expect((await context.request.get('/api/workspaces')).status()).toBe(401);
-  } finally { await context.close(); }
+    const actor = await step('login', () => login(browser));
+    context = actor.context;
+    const { page } = actor;
+    page.on('response', response => {
+      const route = new URL(response.url()).pathname;
+      const operation = route === '/api/auth/me' ? 'session-check'
+        : route === '/api/auth/logout' ? 'logout'
+          : route === '/api/workspaces' ? 'workspace-list'
+            : /^\/api\/workspaces\/[^/]+\/documents$/.test(route) ? 'document-list'
+              : /^\/api\/workspaces\/[^/]+\/members$/.test(route) ? 'workspace-members'
+                : /^\/api\/workspaces\/[^/]+$/.test(route) ? 'workspace-detail' : undefined;
+      if (operation) http.push({ operation, status: response.status() });
+    });
+    const space = await step('create-workspace', () => createSpace(actor.context, 'expiry'));
+    let dialog = await step('select-workspace', () => selectSpace(page, space.id));
+    await step('expire-session', async () => {
+      const expired = await prisma.session.updateMany({ where: { userId: accounts.owner.id }, data: { expiresAt: new Date(0) } });
+      expect(expired.count).toBeGreaterThan(0);
+    });
+    await step('refresh-expired-workspace', () => dialog.getByRole('button', { name: '刷新工作空间', exact: true }).click());
+    await step('verify-expired-state', async () => {
+      await expect(dialog).not.toBeVisible();
+      await expect(page.getByTestId('current-user')).toHaveCount(0);
+      expect(await page.evaluate(id => localStorage.getItem(`weavefield.workspace.${id}`), accounts.owner.id)).toBeNull();
+      const response = await actor.context.request.get(`/api/workspaces/${space.id}`);
+      http.push({ operation: 'expired-workspace', status: response.status() });
+      expect(response.status()).toBe(401);
+    });
+    await step('login-again', async () => {
+      const response = await actor.context.request.post(`${authBase}/auth/login`, { headers, data: { email: accounts.owner.email, password } });
+      http.push({ operation: 'login-again', status: response.status() });
+      expect(response.status()).toBe(200);
+    });
+    await step('reload', async () => {
+      await page.reload();
+      await expect(page.getByTestId('current-user')).toHaveText(accounts.owner.displayName);
+    });
+    dialog = await step('reselect-workspace', () => selectSpace(page, space.id));
+    await step('close-workspace', () => dialog.getByRole('button', { name: '关闭工作空间', exact: true }).click());
+    await step('logout', () => page.getByRole('button', { name: '退出', exact: true }).click());
+    await step('verify-logged-out-state', async () => {
+      await expect(page.getByTestId('current-user')).toHaveCount(0);
+      await expect(page.getByRole('dialog', { name: '我的工作空间' })).toHaveCount(0);
+      expect(await page.evaluate(id => localStorage.getItem(`weavefield.workspace.${id}`), accounts.owner.id)).toBeNull();
+      const response = await actor.context.request.get('/api/workspaces');
+      http.push({ operation: 'logged-out-workspaces', status: response.status() });
+      expect(response.status()).toBe(401);
+    });
+  } catch (error) { failed = true; throw error; }
+  finally {
+    // 首个业务错误优先；清理阶段单独计时，避免 context.close 掩盖原始失败。
+    try { if (context) await step('close-context', () => context!.close()); }
+    catch (error) { if (!failed) throw error; }
+    finally {
+      await info.attach('workspace-session-diagnostics', {
+        body: JSON.stringify({ elapsedMs: Date.now() - started, stages, http }), contentType: 'application/json',
+      });
+    }
+  }
 });
 
 test('mobile workspace loading, service failure and recovery use explicit feedback', async ({ browser }, info) => {

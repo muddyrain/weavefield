@@ -195,6 +195,47 @@ for (const width of [1440, 1280]) {
   });
 }
 
+for (const viewport of [{ width: 1512, height: 740 }, { width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+  test(`document scroll stays inside the viewport at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto(`/?doc=viewport-scroll-${viewport.width}`);
+    await expect(page.locator('.editor-status')).toContainText('已同步');
+    const body = page.locator('.workspace-body');
+    const editor = page.locator('[contenteditable="true"]').first();
+    const topbar = await page.locator('.topbar').boundingBox();
+    const footer = await page.locator('.status-bar').boundingBox();
+    const sidebar = await page.locator('.sidebar').boundingBox();
+    expect(topbar!.y).toBe(0);
+    expect(footer!.y + footer!.height).toBeLessThanOrEqual(viewport.height);
+    if (viewport.width > 900) {
+      // 桌面短文档应直接落在一屏内，不能只把溢出裁掉。
+      const short = await body.evaluate(element => ({ scroll: element.scrollHeight, visible: element.clientHeight }));
+      expect(short.scroll).toBeLessThanOrEqual(short.visible + 1);
+      const card = await page.locator('.editor-card').boundingBox();
+      expect(card!.y + card!.height).toBeLessThanOrEqual(footer!.y);
+    }
+    // BlockNote 的 fill 仅保留首段；通过真实键盘输入生成可滚动的长文档。
+    await editor.fill('滚动回归段落 0');
+    for (let index = 1; index < 40; index++) {
+      await page.keyboard.press('Enter');
+      await page.keyboard.insertText(`滚动回归段落 ${index}`);
+    }
+    await expect(editor).toContainText('滚动回归段落 39');
+    await body.evaluate(element => { element.scrollTop = 0; });
+    const box = await body.boundingBox();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.wheel(0, 600);
+    await expect.poll(() => body.evaluate(element => element.scrollTop)).toBeGreaterThan(50);
+    expect(await page.evaluate(() => scrollY)).toBe(0);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(viewport.height);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    expect(await page.locator('.topbar').boundingBox()).toEqual(topbar);
+    expect(await page.locator('.status-bar').boundingBox()).toEqual(footer);
+    if (sidebar) expect(await page.locator('.sidebar').boundingBox()).toEqual(sidebar);
+    await expect(editor).toContainText('滚动回归段落 39');
+  });
+}
+
 test('unavailable local collab shows recovery guidance and clears it after syncing', async ({ page }, testInfo) => {
   await stopCollab();
   try {

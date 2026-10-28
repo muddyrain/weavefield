@@ -57,8 +57,10 @@ async function open(page: Page, workspaceId: string, actor = 'owner') {
   const dialog = page.getByRole('dialog', { name: '我的工作空间', exact: true });
   await dialog.getByLabel('当前工作空间', { exact: true }).selectOption(workspaceId);
   const panel = dialog.getByRole('region', { name: '空间文档', exact: true });
+  // 先等面板存在，避免空 Locator 的负向断言在初始请求前抢先通过。
+  await expect(panel).toBeVisible();
   await expect(panel.getByText('正在加载文档…', { exact: true })).toHaveCount(0);
-  await expect(panel).toBeVisible(); return { dialog, panel };
+  return { dialog, panel };
 }
 async function visualMetrics(detail: Locator) {
   await detail.scrollIntoViewIfNeeded();
@@ -494,7 +496,10 @@ test('logout, account switching and session expiry clear protected document info
       http.push({ operation: 'outsider-document-list', status: response.status() }); expect(response.status()).toBe(404);
     });
     await switchAccount('owner');
-    await step('reopen-owner-workspace', async () => { ({ dialog, panel } = await open(currentPage, workspace.id)); });
+    await step('reopen-owner-workspace', async () => {
+      ({ dialog, panel } = await open(currentPage, workspace.id));
+      await expect(panel.getByRole('button', { name: '前一账号私有标题', exact: true })).toBeVisible();
+    });
     await step('expire-database-session', async () => {
       const expired = await prisma.session.updateMany({ where: { userId: accounts.owner!.id }, data: { expiresAt: new Date(0) } });
       expect(expired.count).toBeGreaterThan(0);

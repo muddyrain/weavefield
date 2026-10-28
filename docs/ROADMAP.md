@@ -69,16 +69,16 @@ M1.2 已通过 PR #2 Squash 合入 main（1c7418d），[合并后 Linux CI 39572
 
 原阶段命令与结果见 [M1.4 报告](reports/M1.4.md)（保留当时记录），设计见 [ADR-0006](decisions/ADR-0006-document-metadata-and-archive.md)。本阶段没有正文编辑、Yjs PostgreSQL 持久化、Hocuspocus 正式权限、恢复归档或物理删除。OpenAPI 和 M1 总验收在下述 M1.5 收尾，不自动进入 M2。
 
-### M1.5 · OpenAPI、权限回归与 M1 验收（本地实现，待人工审查）
+### M1.5 · OpenAPI、权限回归与 M1 验收（已合并并通过 main CI）
 
 - [x] 18 个现有 REST 操作的 OpenAPI 3 / Swagger UI，Cookie 和写请求契约
 - [x] 默认关闭、显式本地启用、production 强制关闭，声明不改变运行时校验
 - [x] 明确 Auth / Workspace / Membership / Document 权限矩阵及 401 / 403 / 404 顺序
 - [x] 新增独立 OpenAPI 检查并接入 CI，保留既有集成测试及 36 项 E2E
 - [x] macOS / Linux ARM64 完整本地验收：OpenAPI 9/9、Auth 12/12、Workspace 10/10、Document 17/17、单测 19/19、typecheck、build、E2E 36/36；见 [M1.5 报告](reports/M1.5.md)
-- [ ] 人工审查、后续授权的提交 / PR 和新增 CI 验证
+- [x] PR #6 已合入 main（6c5f35c），合并后 GitHub Actions CI #22 通过
 
-M1.1–M1.4 的远程验收已完成。M1.5 本地结果与后续 GitHub Actions 分别记录；在最终验收及人工审查完成前，不把 M1 整体标为正式交付。M2 正文、协作鉴权及 Yjs PostgreSQL 持久化均未开始。
+2026-10-28 核对：[PR #6](https://github.com/muddyrain/weavefield/pull/6) 已合并，[main CI #22](https://github.com/muddyrain/weavefield/actions/runs/39890008988) 为 success；[M1.5 报告](reports/M1.5.md) 保留当时的未提交状态。当前仅执行 PR #7 的 P0 稳定性收尾；原 CI #23 失败、新 head CI 与人工 Code Review 尚未完成，不能引用 main CI 代替本轮验收。M2 正文、协作鉴权及 Yjs PostgreSQL 持久化均未开始。
 
 ## M2 · 可靠的实时协作文档（估计 2–3 周）
 

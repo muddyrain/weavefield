@@ -15,7 +15,7 @@ Weavefield 是一个面向 2–8 人小团队的实时协作工作台：**多人
 - [x] M1.2 密码认证、数据库 Session 与 React 登录交互已通过 PR #2 合入 main，Linux CI 已通过（见 [M1.2 报告](docs/reports/M1.2.md)）
 - [x] M1.3 工作空间、成员管理与服务端 RBAC 已通过 PR #3 合并，合并后 Linux CI 通过（见 [阶段报告](docs/reports/M1.3.md)）
 - [x] M1.4 文档元数据 CRUD 已经 PR #4 / #5 合并，最终 main Linux CI 39718582027 通过（见[路线图](docs/ROADMAP.md)；[历史阶段报告](docs/reports/M1.4.md)保持原记录）
-- [x] M1.5 OpenAPI 与权限契约本地实现完成；验收证据和人工审查状态见 [M1.5 报告](docs/reports/M1.5.md)，本轮尚未提交或执行新的 GitHub Actions
+- [x] M1.5 OpenAPI 与权限契约已通过 [PR #6](https://github.com/muddyrain/weavefield/pull/6) 合入 main（6c5f35c），[main CI #22](https://github.com/muddyrain/weavefield/actions/runs/39890008988) 通过；[M1.5 报告](docs/reports/M1.5.md) 保留当时的本地状态。PR #7 的 P0 收尾和新 head CI 仍需单独验收
 - [ ] **正式正文编辑、协作鉴权及 Yjs PostgreSQL 持久化尚未实现**；Workspace 角色不会授予 M0 协作权限
 - [x] GitHub 仓库已创建，本地 `origin` 已配置
 - [x] M0 及后续测试、演示体验修复已推送，Linux GitHub Actions 已通过

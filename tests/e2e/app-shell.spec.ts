@@ -84,7 +84,7 @@ for(const width of [390,375])test.describe(`${width} mobile shell`,()=>{
     await open(page);const editor=page.locator('[contenteditable=true]').first();await editor.fill('移动端真实协作文档：保留正文与编辑器实例。');
     await page.screenshot({path:info.outputPath(`${width}-document.png`)});
     const trigger=page.getByRole('button',{name:'打开导航',exact:true});await trigger.click();const sheet=page.locator('[data-slot=sheet-content]');await expect(sheet).toBeVisible();
-    await expect(sheet.getByRole('button',{name:'工作空间',exact:true})).toBeDisabled();
+    await expect(sheet.getByRole('button',{name:'工作空间',exact:true})).toBeEnabled();
     for(let i=0;i<8;i++){await page.keyboard.press('Tab');expect(await page.evaluate(()=>Boolean(document.activeElement?.closest('[data-slot=sheet-content]')))).toBe(true);}
     await page.screenshot({path:info.outputPath(`${width}-sheet.png`)});
     await page.keyboard.press('Escape');await expect(sheet).toHaveCount(0);await expect(trigger).toBeFocused();
@@ -102,9 +102,9 @@ for(const width of [1440,390])test.describe(`${width} workspace entry`,()=>{
     await page.goto(`/?doc=ui201-account-${randomUUID()}`);await expect(page.getByTestId('current-user')).toHaveText('UI2 本机验收');
     if(width===390){await page.getByRole('button',{name:'打开导航',exact:true}).click();await page.locator('[data-slot=sheet-content]').getByRole('button',{name:'工作空间',exact:true}).click();}
     else await page.getByRole('button',{name:'工作空间',exact:true}).click();
-    const dialog=page.getByRole('dialog',{name:'我的工作空间',exact:true});await expect(dialog).toBeVisible();await expect(dialog.getByText('正在加载工作空间…',{exact:true})).toHaveCount(0);expect((await page.context().request.get('/api/workspaces')).status()).toBe(200);
-    await page.screenshot({path:info.outputPath(`${width}-workspace.png`)});await dialog.getByRole('button',{name:'关闭工作空间',exact:true}).click();
-    if(width===390)await expect(page.getByRole('button',{name:'打开导航',exact:true})).toBeFocused();
+    const dialog=page.getByRole('region',{name:'我的工作空间',exact:true});await expect(dialog).toBeVisible();await expect(dialog.getByText('正在加载工作空间…',{exact:true})).toHaveCount(0);expect((await page.context().request.get('/api/workspaces')).status()).toBe(200);
+    await page.screenshot({path:info.outputPath(`${width}-workspace.png`)});await dialog.getByRole('button',{name:'返回 Nova 本地演示',exact:true}).click();
+    if(width===390)await expect(page.locator('#main-content')).toBeFocused();
     const response=await page.context().request.post('/api/auth/logout',{headers,data:{}});expect(response.status()).toBe(204);await page.reload();await expect(page.getByTestId('current-user')).toHaveCount(0);expect((await page.context().request.get('/api/workspaces')).status()).toBe(401);
   });
 });

@@ -186,7 +186,10 @@ for (const width of [390, 375]) {
     expect((await meResponse.json()).user.id).toBe(user.id);
     await page.reload();
     await expect(page.getByTestId('current-user')).toHaveText(displayName);
-    // 移动端沿用复制按钮的“本地演示”标识，桌面 pill 的内容仍保留。
+    // 新页面刷新保留导航位置；返回 Nova 后继续验证原有账号、复制范围与移动布局。
+    await expect(page.locator('.demo-pill')).toHaveText('真实工作空间');
+    expect(new URL(page.url()).searchParams.get('view')).toBe('workspace');
+    await page.getByRole('region',{name:'我的工作空间',exact:true}).getByRole('button',{name:'返回 Nova 本地演示',exact:true}).click();
     await expect(page.locator('.demo-pill')).toHaveText('本地演示');
     await expect(copy).toBeVisible();
     await expect(copy).toHaveAttribute('title', /其他电脑无法访问/);

@@ -1,8 +1,8 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent, type Ref } from 'react';
 import type { AuthSession as Session } from '@weavefield/shared';
 import { useAuth } from '../auth/AuthContext';
 
-export default function AuthPanel({ onOpenWorkspaces }: { onOpenWorkspaces: () => void }) {
+export default function AuthPanel({ onOpenWorkspaces, loginTriggerRef }: { onOpenWorkspaces: () => void; loginTriggerRef?: Ref<HTMLButtonElement> }) {
   const { status, session, sessionNotice, refresh, cancelRefresh, acceptSession, clearSession } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [pending, setPending] = useState(false);
@@ -57,7 +57,7 @@ export default function AuthPanel({ onOpenWorkspaces }: { onOpenWorkspaces: () =
         <span className="account-name" data-testid="current-user">{session.user.displayName}</span>
       </button>
       <button className="auth-text-button" onClick={logout} disabled={pending}>{pending ? '退出中…' : '退出'}</button>
-    </> : <button className="account-button" onClick={open} disabled={status === 'loading'}>
+    </> : <button ref={loginTriggerRef} className="account-button" onClick={open} disabled={status === 'loading'}>
       {status === 'loading' ? '验证账号…' : status === 'unavailable' ? '账号连接失败' : '登录 / 注册'}
     </button>}
     {(notice || sessionNotice) && <p className="auth-notice" role="status">{sessionNotice || notice}</p>}

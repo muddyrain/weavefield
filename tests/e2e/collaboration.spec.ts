@@ -116,7 +116,7 @@ async function layoutMetrics(page: Page) {
       viewport: { width: innerWidth, height: innerHeight },
       main: rect('.main-panel'), sidebar: rect('.sidebar'), topbar: rect('.topbar'),
       titleLines: range.getClientRects().length,
-      controls: ['.icon-button', '.breadcrumb', '.demo-pill', '.share-btn'].map(rect),
+      controls: ['.desktop-toggle', '.breadcrumb', '.share-btn'].map(rect),
       documentWidth: document.documentElement.scrollWidth,
       documentHeight: document.documentElement.scrollHeight,
     };
@@ -144,16 +144,14 @@ for (const width of [1440, 1280]) {
     const measurements: Array<Awaited<ReturnType<typeof layoutMetrics>> & { state: string }> = [];
 
     async function checkLayout(state: string, expanded: boolean) {
+      await expect.poll(() => page.locator('.sidebar').evaluate(element => Math.round(element.getBoundingClientRect().width))).toBe(expanded ? 248 : 64);
       const metrics = await layoutMetrics(page);
       measurements.push({ state, ...metrics });
       expect(metrics.main.width, `${state}: main must fill the available width`).toBeGreaterThan(900);
       expect(Math.abs(metrics.main.right - width)).toBeLessThanOrEqual(1);
       expect(Math.abs(metrics.main.x - metrics.sidebar.width)).toBeLessThanOrEqual(1);
-      if (expanded) expect(metrics.sidebar.width).toBeGreaterThan(0);
-      else {
-        expect(metrics.sidebar.width).toBe(0);
-        expect(Math.abs(metrics.main.width - width)).toBeLessThanOrEqual(1);
-      }
+      expect(metrics.sidebar.width).toBe(expanded ? 248 : 64);
+      expect(Math.abs(metrics.main.width - (width - metrics.sidebar.width))).toBeLessThanOrEqual(1);
       expect(metrics.titleLines, `${state}: title must stay on one line`).toBe(1);
       expect(Math.abs(metrics.topbar.width - metrics.main.width)).toBeLessThanOrEqual(1);
       for (const control of metrics.controls) {

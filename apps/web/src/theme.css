@@ -1,0 +1,27 @@
+/* UI2-01：A 浅色语义契约；深色仅预留 tokens，尚不提供主题切换。 */
+:root {
+  --background: #fff; --foreground: #202127;
+  --muted: #f7f7f9; --muted-foreground: #62646e;
+  --primary: #6258d6; --primary-foreground: #fff;
+  --accent: #eeecfc; --accent-foreground: #5147bc;
+  --border: #e6e6ec; --input: #8a8c9c; --ring: #6c63dc;
+  --destructive: #b83342; --destructive-foreground: #fff;
+  --success: #23704a; --warning: #89651c;
+  --popover: #fff; --popover-foreground: #202127;
+  --secondary: #f5f5f8; --secondary-foreground: #373741;
+  --sidebar: #f5f5f8; --sidebar-foreground: #62646e;
+  --sidebar-accent: #eeecfc; --sidebar-accent-foreground: #5147bc;
+  --radius: .375rem;
+  --wf-motion-duration: 240ms; --wf-ease: cubic-bezier(.22,1,.36,1);
+  --wf-font-ui: .875rem; --wf-font-small: .75rem;
+  --wf-space-1: .25rem; --wf-space-2: .5rem; --wf-space-3: .75rem; --wf-space-4: 1rem;
+  --wf-space-6: 1.5rem; --wf-space-8: 2rem;
+  --wf-z-sticky: 10; --wf-z-overlay: 40; --wf-z-dialog: 50; --wf-z-skip: 60;
+}
+.wf-theme-dark {
+  --background: #191a1f; --foreground: #eeeef3; --muted: #23242c; --muted-foreground: #adafb9;
+  --primary: #b1a8ff; --primary-foreground: #211b46; --accent: #2c2944; --accent-foreground: #c2baff;
+  --border: #30323c; --input: #686b79; --ring: #b1a8ff; --destructive: #ff9ca5;
+  --popover: #23242c; --popover-foreground: #eeeef3; --sidebar: #16171c; --sidebar-foreground: #adafb9;
+  --sidebar-accent: #2c2944; --sidebar-accent-foreground: #c2baff;
+}

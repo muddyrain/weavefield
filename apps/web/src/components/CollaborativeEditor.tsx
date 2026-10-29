@@ -95,7 +95,7 @@ pnpm dev`}</code></pre>
 
   return (
     <div className="editor-shell">
-      <div className="editor-status" role="status" data-state={status}><span className="live-dot" aria-hidden="true" /> {statusLabels[status]} · {room}</div>
+      <div className="editor-status" role="status" data-state={status}><span className="live-dot" aria-hidden="true" /><span className="editor-status-label">{statusLabels[status]}</span><span aria-hidden="true">·</span><span className="editor-room" title={room}>{room}</span></div>
       {(status === 'disconnected' || status === 'authentication-failed') && (
         <div className="editor-connection-help" role="note">
           <p>{status === 'authentication-failed'

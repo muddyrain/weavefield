@@ -1,0 +1,108 @@
+{
+  "recordedOn": "2026-10-29",
+  "source": "Real React app served over HTTP; headless Chromium; real API and Hocuspocus/Yjs. Editor text entered using keyboard. MP4 transcodes preserve source frames without UI editing or frame interpolation.",
+  "runtimeErrors": [],
+  "rawArchive": ".playwright/ui2-01-closeout-20261029/capture-raw (local only, intentionally excluded from staged scope)",
+  "items": [
+    {
+      "kind": "screenshot",
+      "file": "1440-document.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "6893a05eedcbdedb8dc3a764dec05893915e9375b6b25bfb4ca991446cce1734",
+      "bytes": 112764
+    },
+    {
+      "kind": "screenshot",
+      "file": "1280-collapsed.png",
+      "width": 1280,
+      "height": 720,
+      "sha256": "e2015d17b5b6cc03f3a89cb286f59e5149a54b638da42524a65ac38c5846f2fb",
+      "bytes": 86329
+    },
+    {
+      "kind": "screenshot",
+      "file": "390-document.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "667baae8a2239bdb6e53daf8a93ba11ca6140d37d95077d5033b609d9e071721",
+      "bytes": 66899
+    },
+    {
+      "kind": "screenshot",
+      "file": "375-sheet.png",
+      "width": 375,
+      "height": 844,
+      "sha256": "a2c59baac1983367e89bea5849abcff1ee2e9deb72eb97311b5ca2cfdb86b7e7",
+      "bytes": 30335
+    },
+    {
+      "kind": "screenshot",
+      "file": "390-login.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "8997301a4bc6c50d085e7195e3f22a2beda134a686e094bb46e4f98612508734",
+      "bytes": 42783
+    },
+    {
+      "kind": "screenshot",
+      "file": "390-workspace.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "6569ff8e90e7793b93f5f478f28a781d773e5f2ecad9599e2fb8933930314efe",
+      "bytes": 52361
+    },
+    {
+      "kind": "video",
+      "file": "1440-normal.mp4",
+      "width": 1440,
+      "height": 900,
+      "codec": "h264",
+      "durationSeconds": 11.08,
+      "reducedMotion": false,
+      "rawFile": "1440-normal.webm",
+      "rawSha256": "a56e8a363616272907a976ef06e80cfd587afbad52a42cf9ddbc3e25dafd8301",
+      "sha256": "b56ff0e21eab3067072df0eb84c15977bfebb8e758be484931a9099674780a22",
+      "bytes": 355108
+    },
+    {
+      "kind": "video",
+      "file": "1440-reduced.mp4",
+      "width": 1440,
+      "height": 900,
+      "codec": "h264",
+      "durationSeconds": 7.88,
+      "reducedMotion": true,
+      "rawFile": "1440-reduced.webm",
+      "rawSha256": "6c8fc8b0a76d91505119304bbdf154ef34b283ccce5e18866614542ceb94753d",
+      "sha256": "4d5109766777300d6e9f9264bb3b65beaba069420b3a0f9d4f5aa83bbfc89475",
+      "bytes": 253060
+    },
+    {
+      "kind": "video",
+      "file": "390-normal.mp4",
+      "width": 390,
+      "height": 844,
+      "codec": "h264",
+      "durationSeconds": 11.44,
+      "reducedMotion": false,
+      "rawFile": "390-normal.webm",
+      "rawSha256": "3371685b4c5f20f66286f3a87f3106b191216ea1dd3e96c0ba3228190689c2ca",
+      "sha256": "3ccbb14e0f1453c9792533455ea5a56f35b35aa370f626df88aae23f5309155b",
+      "bytes": 433143
+    },
+    {
+      "kind": "video",
+      "file": "390-reduced.mp4",
+      "width": 390,
+      "height": 844,
+      "codec": "h264",
+      "durationSeconds": 8.36,
+      "reducedMotion": true,
+      "rawFile": "390-reduced.webm",
+      "rawSha256": "ffb6b84cde9986c4b885b52652ffdd062c7bee3745fedf027ad56c2a1c332db9",
+      "sha256": "94d0733b33e9ac5f664afb124383210fbec31680601c98b36b2807fdf5f2afb2",
+      "bytes": 219771
+    }
+  ]
+}

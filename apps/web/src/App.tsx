@@ -1,96 +1,128 @@
-import { useMemo, useState } from 'react';
-import { Activity, ArrowUpRight, BookOpenText, CheckCheck, CircleHelp, Clock3, FileText, GitBranch, Layers, LayoutGrid, Link2, Lock, PanelLeft, Plus, Search, Settings2, Sparkles, Users, Workflow } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
+import { CheckCheck, Link2, Lock, PanelLeft, Workflow } from 'lucide-react';
 import AuthPanel from './components/AuthPanel';
 import WorkspacePanel from './components/WorkspacePanel';
 import CollaborativeEditor from './components/CollaborativeEditor';
+import { ShellNavigation, WeaveMark, type NavigationTarget, type PageTab } from './components/ShellNavigation';
+import { Button } from './components/ui/button';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from './components/ui/sheet';
+import { useAuth } from './auth/AuthContext';
 import { currentRoom } from './lib/room';
+import { cn } from './lib/utils';
 
-type Tab = 'document' | 'workflow' | 'tasks';
 const guestName = `访客 ${Math.floor(Math.random() * 900 + 100)}`;
+const titles: Record<PageTab,string> = {document:'产品需求文档',workflow:'用户流程',tasks:'开发任务'};
 
-function WorkspacePlaceholder({ tab }: { tab: Exclude<Tab, 'document'> }) {
-  return (
-    <div className="placeholder">
-      <div className="placeholder-icon">{tab === 'workflow' ? <Workflow size={25} /> : <CheckCheck size={25} />}</div>
-      <p className="eyebrow">COMING IN M3</p>
-      <h2>{tab === 'workflow' ? '把想法连接成流程' : '让每个任务都有上下文'}</h2>
-      <p>{tab === 'workflow' ? '后续在同一项目中连接需求块、节点与任务，支持稳定 ID 双向跳转。' : '后续展示由同一个需求派生的任务、负责人、进度与验收标准。'}</p>
-      <span className="placeholder-badge">这里是产品规划占位，不是已实现的功能</span>
-    </div>
-  );
+function PlanningPage({ tab }: { tab: 'workflow' | 'tasks' }) {
+  return <section className="planning-page" aria-label={titles[tab]}>
+    {tab === 'workflow' ? <Workflow aria-hidden="true"/> : <CheckCheck aria-hidden="true"/>}
+    <h1>{titles[tab]} · 规划中</h1>
+    <p>{tab === 'workflow' ? '后续通过稳定 ID 连接需求块与流程节点。' : '后续关联需求、负责人、任务进度和验收标准。'}</p>
+    <p>这里是产品规划占位，不是已实现的功能。</p>
+  </section>;
 }
 
 export default function App() {
+  const { status, session, refresh } = useAuth();
   const [workspacesOpen, setWorkspacesOpen] = useState(false);
-  const [tab, setTab] = useState<Tab>('document');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [tab, setTab] = useState<PageTab>('document');
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktop, setDesktop] = useState(() => matchMedia('(min-width:901px)').matches);
+  const mobileWorkspace = useRef(false);
+  const mobileTrigger = useRef<HTMLButtonElement>(null);
+  const desktopTrigger = useRef<HTMLButtonElement>(null);
+  const restoreTriggerFocus = useRef(false);
+  const [composing, setComposing] = useState(false);
   const [shareStatus, setShareStatus] = useState<'idle' | 'copying' | 'success' | 'error'>('idle');
-  const room = useMemo(() => {
-    try { return currentRoom(window.location.search); }
-    catch { return 'doc:demo-project'; }
+  const room = useMemo(() => { try { return currentRoom(window.location.search); } catch { return 'doc:demo-project'; } }, []);
+  const closeWorkspaces = useCallback(() => setWorkspacesOpen(false), []);
+  const openWorkspaces = useCallback(() => setWorkspacesOpen(true), []);
+  const authenticated = status === 'authenticated';
+  useEffect(() => {
+    const query = matchMedia('(min-width:901px)');
+    const closeDrawer = () => {
+      const focused = document.activeElement;
+      // 仅接替断点切换后消失的导航焦点，不干扰正文输入。
+      restoreTriggerFocus.current = focused === mobileTrigger.current || focused === desktopTrigger.current
+        || (!query.matches && Boolean(focused?.closest('.sidebar')));
+      setDesktop(query.matches);
+      if (query.matches) setMobileOpen(false);
+    };
+    query.addEventListener('change', closeDrawer);
+    return () => query.removeEventListener('change', closeDrawer);
   }, []);
-  const share = async () => {
+  useEffect(() => {
+    if (restoreTriggerFocus.current) {
+      restoreTriggerFocus.current = false;
+      (desktop ? desktopTrigger : mobileTrigger).current?.focus();
+    }
+  }, [desktop]);
+  function navigate(target: NavigationTarget) {
+    setMobileOpen(false);
+    if (target === 'workspace') { if (authenticated) { void refresh(); setWorkspacesOpen(true); } }
+    else setTab(target);
+  }
+  async function share() {
     setShareStatus('copying');
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
-      await navigator.clipboard.writeText(window.location.href);
-      setShareStatus('success');
-    } catch {
-      setShareStatus('error');
-    }
-  };
-
-  return (
-    <div className={`app-frame ${sidebarOpen ? '' : 'sidebar-hidden'}`}>
-      <aside className="sidebar" aria-label="项目导航">
-        <div className="brand"><div className="brand-mark"><Layers size={21}/></div><div><b>Weavefield</b><small>织域 · WORKSPACE</small></div></div>
-        <div className="space-picker"><span className="space-avatar">N</span><div><strong>Nova 产品空间</strong><span>本地演示环境</span></div><ArrowUpRight size={16}/></div>
-        <div className="side-section">WORKSPACE</div>
-        <nav className="side-nav">
-          <button className={tab === 'document' ? 'active' : ''} onClick={() => setTab('document')}><FileText size={17}/> 产品需求文档 <span>01</span></button>
-          <button className={tab === 'workflow' ? 'active' : ''} onClick={() => setTab('workflow')}><Workflow size={17}/> 用户流程 <span>02</span></button>
-          <button className={tab === 'tasks' ? 'active' : ''} onClick={() => setTab('tasks')}><LayoutGrid size={17}/> 开发任务 <span>03</span></button>
-        </nav>
-        <div className="side-section assets-label">QUICK ACCESS</div>
-        <nav className="side-nav muted-nav">
-          <div><BookOpenText size={17}/> 项目知识库 <span className="soon">规划中</span></div>
-          <div><Clock3 size={17}/> 历史版本 <span className="soon">规划中</span></div>
-        </nav>
-        <div className="sidebar-bottom"><div className="team"> <div className="team-avatar">W</div><div><strong>Weavefield Demo</strong><small>前端 × 实时协作练习</small></div><Settings2 size={15}/></div></div>
-      </aside>
-      <WorkspacePanel open={workspacesOpen} onClose={() => setWorkspacesOpen(false)}/>
-      <main className="main-panel">
-        <header className="topbar">
-          <button className="icon-button" aria-label="切换侧栏" onClick={() => setSidebarOpen(v => !v)}><PanelLeft size={18}/></button>
-          <div className="breadcrumb"><span>Nova 产品空间</span><span className="slash">/</span><strong>{tab==='document'?'产品需求文档':tab==='workflow'?'用户流程':'开发任务'}</strong></div>
-          <div className="top-actions">
-            <AuthPanel onOpenWorkspaces={() => setWorkspacesOpen(true)}/>
-            <span className="demo-pill"><Lock size={12}/> 本地演示</span>
-            <div className="share-control">
-              <button className="share-btn" onClick={share} disabled={shareStatus === 'copying'} title="仅供同一台电脑的其他标签页或浏览器窗口使用，其他电脑无法访问">
-                <Link2 size={15}/> {shareStatus === 'copying' ? '复制中…' : '复制本地演示链接'}
-              </button>
-              {(shareStatus === 'success' || shareStatus === 'error') && (
-                <p className="share-feedback" role="status">
-                  {shareStatus === 'success'
-                    ? '已复制本地演示链接，仅供这台电脑的其他标签页或浏览器窗口使用。'
-                    : '复制失败，请手动复制地址栏链接；该链接仅限这台电脑使用。'}
-                </p>
-              )}
-            </div>
-          </div>
-        </header>
-        <section className="workspace-body">
-          {tab === 'document' ? (
-            <div className="document-view">
-              <div className="document-head"><p className="eyebrow">PRODUCT / REQUIREMENTS <span className="separator-dot">•</span> 01</p><h1>产品需求文档 <span className="page-emoji">✦</span></h1><p className="description">好的想法，从每个人都能理解的一份文档开始。</p><div className="doc-meta"><span><Users size={15}/> 多人协作演示</span><span><Activity size={15}/> Yjs + Hocuspocus</span><span><Lock size={15}/> localhost only</span></div></div>
-              <div className="note-banner"><Sparkles size={19}/><div><strong>欢迎来到织域的第一个 Demo</strong><p>本机多窗口打开同一链接即可协同编辑。Nova 仍是演示空间，账号登录暂不授予协作权限。</p></div></div>
-              <div className="editor-card"><CollaborativeEditor room={room} guestName={guestName}/></div>
-            </div>
-          ) : <WorkspacePlaceholder tab={tab}/>}
+      await navigator.clipboard.writeText(window.location.href); setShareStatus('success');
+    } catch { setShareStatus('error'); }
+  }
+  function preserveEditorFocus(event: PointerEvent<HTMLButtonElement>) {
+    // 鼠标收展侧栏时保留正在输入的 Selection；键盘仍可正常聚焦按钮。
+    if (event.pointerType === 'mouse' && event.button === 0 && document.activeElement?.closest('.bn-editor')) event.preventDefault();
+  }
+  const active = workspacesOpen && authenticated ? 'workspace' : tab;
+  return <div className={cn('app-frame wf-ui', collapsed && 'sidebar-collapsed', composing && 'is-composing')} style={{'--sidebar-width':collapsed?'64px':'248px'} as CSSProperties}>
+    <a className="skip-link" href="#main-content">跳到主要内容</a>
+    <aside className="sidebar" aria-label="桌面侧栏">
+      <div className="brand"><WeaveMark/><span>Weavefield</span></div>
+      <div className="space-picker"><span className="space-avatar">N</span><span className="space-copy"><strong>Nova</strong><small>本地演示环境</small></span></div>
+      <ShellNavigation active={active} collapsed={collapsed} authenticated={authenticated} onNavigate={navigate} group="desktop"/>
+      <div className="sidebar-bottom"><Lock aria-hidden="true"/><span>{authenticated ? session?.user.displayName : '访客模式'}<small>{authenticated ? '真实账号与演示权限独立' : '无需账号即可体验本地演示'}</small></span></div>
+    </aside>
+    <WorkspacePanel open={workspacesOpen} onClose={closeWorkspaces}/>
+    <div className="main-panel">
+      <header className="topbar">
+        {desktop && <Button ref={desktopTrigger} variant="ghost" size="icon" className="icon-button desktop-toggle" aria-label="切换侧栏" aria-expanded={!collapsed} onPointerDown={preserveEditorFocus} onClick={() => setCollapsed(!collapsed)}><PanelLeft/></Button>}
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          {!desktop && <SheetTrigger asChild><Button ref={mobileTrigger} variant="ghost" size="icon" className="icon-button mobile-toggle" aria-label="打开导航"><PanelLeft/></Button></SheetTrigger>}
+          <SheetContent side="left" className="wf-ui mobile-sheet" onCloseAutoFocus={event => {
+            if (mobileWorkspace.current) {
+              event.preventDefault(); mobileWorkspace.current = false; (desktopTrigger.current ?? mobileTrigger.current)?.focus();
+              void refresh(); setWorkspacesOpen(true);
+            } else if (desktopTrigger.current) {
+              // Sheet 关闭时原移动触发器可能已卸载；此时交给可见的桌面按钮。
+              event.preventDefault(); desktopTrigger.current.focus();
+            }
+          }}>
+            <SheetHeader><SheetTitle className="brand"><WeaveMark/>Weavefield</SheetTitle><SheetDescription>真实工作空间与 Nova 本地演示保持独立。</SheetDescription></SheetHeader>
+            <ShellNavigation active={active} authenticated={authenticated} onNavigate={target => {
+              // 原生 Workspace dialog 在 Sheet 释放焦点约束后再打开。
+              if (target === 'workspace' && authenticated) { mobileWorkspace.current = true; setMobileOpen(false); }
+              else navigate(target);
+            }} group="mobile"/>
+          </SheetContent>
+        </Sheet>
+        <div className="breadcrumb"><span>Nova</span><span aria-hidden="true">/</span><strong>{tab === 'document' ? '本地协作演示' : `${titles[tab]} · 规划中`}</strong></div>
+        <div className="top-actions">
+          <AuthPanel onOpenWorkspaces={openWorkspaces}/>
+          <div className="share-control"><Button variant="outline" size="sm" className="share-btn" onClick={share} disabled={shareStatus==='copying'} aria-label="复制本地演示链接" title="仅供同一台电脑的其他标签页或浏览器窗口使用，其他电脑无法访问"><Link2 data-icon="inline-start"/><span>{shareStatus==='copying'?'复制中…':'复制本地演示链接'}</span></Button>
+          {(shareStatus==='success'||shareStatus==='error')&&<p className="share-feedback" role="status">{shareStatus==='success'?'已复制本地演示链接，仅供这台电脑的其他标签页或浏览器窗口使用。':'复制失败，请手动复制地址栏链接；该链接仅限这台电脑使用。'}</p>}</div>
+        </div>
+      </header>
+      <div className="boundary-strip"><span className="demo-pill"><Lock aria-hidden="true"/>本地演示</span><span>登录不授予 Nova 协作权限</span></div>
+      <main id="main-content" className="workspace-body" tabIndex={-1} aria-label={titles[tab]} onCompositionStartCapture={()=>setComposing(true)} onCompositionEndCapture={()=>setComposing(false)}>
+        {/* 保持编辑器、provider 和 Y.Doc 的实例，导航只改变可见表面。 */}
+        <section className="document-view" hidden={tab!=='document'} aria-label="Nova 本地协作文档">
+          <header className="document-head"><p className="document-kind">Nova / 本地协作演示</p><h1>产品需求文档</h1><p className="description">同一份文档，让讨论和修改保持连贯。</p><div className="doc-meta"><span>{guestName}</span><span>Yjs + Hocuspocus</span><span>仅限 localhost</span></div></header>
+          <div className="editor-card"><CollaborativeEditor room={room} guestName={guestName}/></div>
         </section>
-        <footer className="status-bar"><span><span className="status-light"/> Weavefield · Prototype v0.1</span><span>目前仅本地演示 · 查看 docs/ROADMAP.md</span></footer>
+        {tab!=='document'&&<PlanningPage tab={tab}/>}
       </main>
+      <footer className="status-bar"><span>Weavefield · 本地协作演示</span><span>真实工作空间仅管理文档元数据</span></footer>
     </div>
-  );
+  </div>;
 }

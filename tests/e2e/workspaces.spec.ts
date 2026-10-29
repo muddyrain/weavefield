@@ -51,7 +51,7 @@ async function login(browser: Browser, actor: keyof typeof accounts = 'owner') {
 }
 async function open(page: Page, actor: keyof typeof accounts = 'owner') {
   await page.getByRole('button', { name: accounts[actor].displayName, exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '我的工作空间', exact: true });
+  const dialog = page.getByRole('region', { name: '我的工作空间', exact: true });
   await expect(dialog).toBeVisible(); return dialog;
 }
 
@@ -62,9 +62,11 @@ test('real workspace creation, switching and refresh recovery stay separate from
     await expect(dialog).toContainText('还没有加入任何工作空间');
     await expect(dialog).toContainText('不包含 M0 演示文档');
     for (const [suffix, name] of [['alpha', '真实空间甲'], ['beta', '真实空间乙']] as const) {
-      await dialog.getByLabel('新空间名称', { exact: true }).fill(name);
-      await dialog.getByLabel('空间标识', { exact: true }).fill(`${run}-${suffix}`);
-      await dialog.getByRole('button', { name: '创建工作空间', exact: true }).click();
+      await dialog.getByRole('button', {name:'新建空间',exact:true}).click();
+      const createDialog=page.getByRole('dialog',{name:'创建工作空间',exact:true});
+      await createDialog.getByLabel('新空间名称', { exact: true }).fill(name);
+      await createDialog.getByLabel('空间标识', { exact: true }).fill(`${run}-${suffix}`);
+      await createDialog.getByRole('button', { name: '创建工作空间', exact: true }).click();
       await expect(dialog.getByRole('heading', { name, exact: true })).toBeVisible();
       await expect(dialog.getByTestId('workspace-role')).toHaveText('OWNER');
     }
@@ -72,11 +74,12 @@ test('real workspace creation, switching and refresh recovery stay separate from
     await expect(dialog.getByRole('heading', { name: '真实空间甲', exact: true })).toBeVisible();
     await page.reload(); dialog = await open(page);
     await expect(dialog.getByRole('heading', { name: '真实空间甲', exact: true })).toBeVisible();
+    await dialog.getByRole('tab',{name:'设置',exact:true}).click();
     await dialog.getByLabel('空间名称', { exact: true }).fill('改名后的真实空间');
     await dialog.getByRole('button', { name: '保存空间名称', exact: true }).click();
     await expect(dialog.getByRole('heading', { name: '改名后的真实空间', exact: true })).toBeVisible();
     await page.screenshot({ path: info.outputPath('workspace-desktop.png') });
-    await dialog.getByRole('button', { name: '关闭工作空间', exact: true }).click();
+    await dialog.getByRole('button', { name: '返回 Nova 本地演示', exact: true }).click();
     await expect(page.getByRole('heading', { name: '产品需求文档' })).toBeVisible();
     await expect(page.locator('.demo-pill')).toHaveText('本地演示');
   } finally { await context.close(); }
@@ -94,6 +97,7 @@ async function selectSpace(page: Page, id: string, actor: keyof typeof accounts 
   const documents = dialog.getByRole('region', { name: '空间文档', exact: true });
   await expect(documents).toBeVisible();
   await expect(documents.getByText('正在加载文档…', { exact: true })).toHaveCount(0);
+  await dialog.getByRole('tab',{name:'成员',exact:true}).click();
   return dialog;
 }
 
@@ -118,6 +122,7 @@ test('owner manages real members while editor, viewer and removed users see the 
     await expect(reader.getByTestId('workspace-role')).toHaveText('VIEWER');
     await expect(reader.getByRole('button', { name: /^移除/ })).toHaveCount(0);
     await dialog.getByRole('button', { name: '移除空间同事', exact: true }).click();
+    await owner.page.getByRole('dialog',{name:'确认移除成员',exact:true}).getByRole('button',{name:'确认移除成员',exact:true}).click();
     await expect(dialog.getByTestId('workspace-member')).toHaveCount(1);
     await reader.getByRole('button', { name: '刷新工作空间', exact: true }).click();
     await expect(reader).toContainText('所选空间已不可访问');
@@ -136,6 +141,7 @@ test('stale owner controls show server rejection and refresh the actual role', a
     expect((await owner.context.request.post(`/api/workspaces/${space.id}/members`, { headers, data: { email: accounts.colleague.email, role: 'OWNER' } })).status()).toBe(201);
     const dialog = await selectSpace(owner.page, space.id);
     expect((await colleague.context.request.patch(`/api/workspaces/${space.id}/members/${accounts.owner.id}`, { headers, data: { role: 'VIEWER' } })).status()).toBe(200);
+    await dialog.getByRole('tab',{name:'设置',exact:true}).click();
     await dialog.getByLabel('空间名称', { exact: true }).fill('不应生效的修改');
     await dialog.getByRole('button', { name: '保存空间名称', exact: true }).click();
     await expect(dialog.getByRole('alert')).toHaveText('此操作需要 OWNER 权限');
@@ -201,11 +207,11 @@ test('expired and logged-out sessions clear protected workspace state and stored
       await expect(page.getByTestId('current-user')).toHaveText(accounts.owner.displayName);
     });
     dialog = await step('reselect-workspace', () => selectSpace(page, space.id));
-    await step('close-workspace', () => dialog.getByRole('button', { name: '关闭工作空间', exact: true }).click());
+    await step('close-workspace', () => dialog.getByRole('button', { name: '返回 Nova 本地演示', exact: true }).click());
     await step('logout', () => page.getByRole('button', { name: '退出', exact: true }).click());
     await step('verify-logged-out-state', async () => {
       await expect(page.getByTestId('current-user')).toHaveCount(0);
-      await expect(page.getByRole('dialog', { name: '我的工作空间' })).toHaveCount(0);
+      await expect(page.getByRole('region', { name: '我的工作空间' })).toHaveCount(0);
       expect(await page.evaluate(id => localStorage.getItem(`weavefield.workspace.${id}`), accounts.owner.id)).toBeNull();
       const response = await actor.context.request.get('/api/workspaces');
       http.push({ operation: 'logged-out-workspaces', status: response.status() });
@@ -233,7 +239,7 @@ test('mobile workspace loading, service failure and recovery use explicit feedba
     await page.setViewportSize({ width: 375, height: 844 });
     const dialog = await open(page);
     await expect(dialog.getByRole('status')).toHaveText('正在加载工作空间…');
-    await expect(dialog.getByRole('button', { name: '创建工作空间', exact: true })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: '新建空间', exact: true })).toBeDisabled();
     release();
     await expect(dialog.getByRole('alert')).toHaveText('工作空间服务暂时不可用');
     await expect(dialog.getByText('还没有加入任何工作空间', { exact: false })).toHaveCount(0);

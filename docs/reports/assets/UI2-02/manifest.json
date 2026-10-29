@@ -1,0 +1,193 @@
+{
+  "source": "Real React application, isolated Cookie Session API/PostgreSQL. Loading and 503 screenshots explicitly fault-injected GET only; no simulated records or auth.",
+  "screenshots": 19,
+  "videos": 4,
+  "raw": ".playwright/ui2-02/capture-raw",
+  "files": [
+    {
+      "file": "1280-documents.png",
+      "bytes": 101762,
+      "sha256": "310f51c7033d6c47f78bba64fb3c21f2443ab55b39c6b5c903733fde1450c964"
+    },
+    {
+      "file": "1440-confirmation.png",
+      "bytes": 133767,
+      "sha256": "b5c7e453e5fda6b8e9bedd76199598c08a460e1cf1cbe7c2eb20d2c7e258df8f"
+    },
+    {
+      "file": "1440-detail.png",
+      "bytes": 124003,
+      "sha256": "2002bbe15d37b659d3b484e3e81d935238a7b9d76ef9e9275d8e6ff0dcef3162"
+    },
+    {
+      "file": "1440-documents.png",
+      "bytes": 104030,
+      "sha256": "fcce4b5095085f7569979d327db1446585c3dbaf05b8b55f78bdd7813a7bad6f"
+    },
+    {
+      "file": "1440-empty.png",
+      "bytes": 101283,
+      "sha256": "0f35fd8f6ccba4a6844bbdb51aab70f795ab15a3d132ca46e92f6d3abb942a9e"
+    },
+    {
+      "file": "1440-error.png",
+      "bytes": 76783,
+      "sha256": "dac9a68be0ef7f6ad9ecbfea79566c66ac71ecd2397e6dd7ab60f7b0232b5d34"
+    },
+    {
+      "file": "1440-loading.png",
+      "bytes": 73333,
+      "sha256": "1f08f71679caeb002893f1eed760325ad281379a2c288802adefd262724ffb2b"
+    },
+    {
+      "file": "1440-members.png",
+      "bytes": 117995,
+      "sha256": "3990d27294cf2a4ab1c0567a094cf702312774c0fbef514ec3afb117c51deb37"
+    },
+    {
+      "file": "1440-normal.mp4",
+      "bytes": 356331,
+      "sha256": "dc81d32cf1c34601e70b284e6867e3f3f193fa8c4470fc4bedeea98c4d4c2722"
+    },
+    {
+      "file": "1440-reduced.mp4",
+      "bytes": 257448,
+      "sha256": "8ef19ba4cb959ff09c3b4696706e52e06e41fba134753884fa28a882d30c0be3"
+    },
+    {
+      "file": "1440-viewer.png",
+      "bytes": 132637,
+      "sha256": "3b04946d3129d9b36e4c4fac73b9d13431a582d20104bad99e99cbce2ccd2052"
+    },
+    {
+      "file": "375-documents.png",
+      "bytes": 62538,
+      "sha256": "8152889679f5747d17b80b271844bc0aceea40901b5cc15020e06a33f82db847"
+    },
+    {
+      "file": "375-sheet.png",
+      "bytes": 29672,
+      "sha256": "547ab0804bfd86aca65dfa5fff0d17f4bb2b6755024759501552af1667efa2b7"
+    },
+    {
+      "file": "390-confirmation.png",
+      "bytes": 56797,
+      "sha256": "1565fd5ebb6f1b6b5958961613a65c5c92aa0ad8ca5282534b29089ffc175120"
+    },
+    {
+      "file": "390-detail.png",
+      "bytes": 58112,
+      "sha256": "928c280099d377b04cbdb77229b8b57f798295656ee34ce25213c8589789566e"
+    },
+    {
+      "file": "390-documents.png",
+      "bytes": 62690,
+      "sha256": "68a9da15141d19ccdf6b125ae0aabf0a60cc0558abb1105081d750e769dc17d7"
+    },
+    {
+      "file": "390-empty.png",
+      "bytes": 59808,
+      "sha256": "ee3dc6df068f22f6b87a97b389f5ef8f4988552ba7d7b3d74e87a5c4590e1cbd"
+    },
+    {
+      "file": "390-error.png",
+      "bytes": 39306,
+      "sha256": "8f7129aa89b96686fe5acded5aecf43c40cc0129c66aa0c8d67b3d74662ca406"
+    },
+    {
+      "file": "390-loading.png",
+      "bytes": 36298,
+      "sha256": "49ad90abb052b2b4a8887f965603ac6da409cd7ad7bebd52d79a7ec48f0d0d93"
+    },
+    {
+      "file": "390-members.png",
+      "bytes": 60353,
+      "sha256": "dd105ac488e6e25e1a0ff95fa6255119b6973d2d5695fe92b656b787ce0d2604"
+    },
+    {
+      "file": "390-normal.mp4",
+      "bytes": 258978,
+      "sha256": "0298993cfe74d62c609b2b9124f9f9d016bd1d556038b52d1fd72dcae7ec3696"
+    },
+    {
+      "file": "390-reduced.mp4",
+      "bytes": 171194,
+      "sha256": "c500b8e49303c3d14595f8b22b3398fd40ab49a6404bb4fc8492d32109f96ff5"
+    },
+    {
+      "file": "390-viewer.png",
+      "bytes": 59541,
+      "sha256": "31c90e778dd72070a63842cd7a39ebf14a4d78edfc88997adf3ecc642fc9a0aa"
+    }
+  ],
+  "videoMetadata": [
+    {
+      "file": "1440-normal.mp4",
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 1440,
+            "height": 900
+          }
+        ],
+        "format": {
+          "duration": "9.000000"
+        }
+      }
+    },
+    {
+      "file": "1440-reduced.mp4",
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 1440,
+            "height": 900
+          }
+        ],
+        "format": {
+          "duration": "8.760000"
+        }
+      }
+    },
+    {
+      "file": "390-normal.mp4",
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 390,
+            "height": 844
+          }
+        ],
+        "format": {
+          "duration": "9.120000"
+        }
+      }
+    },
+    {
+      "file": "390-reduced.mp4",
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 390,
+            "height": 844
+          }
+        ],
+        "format": {
+          "duration": "8.520000"
+        }
+      }
+    }
+  ]
+}

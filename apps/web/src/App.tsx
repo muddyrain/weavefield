@@ -1,6 +1,8 @@
+import { useReducedMotionPreference as useReducedMotion } from './lib/useReducedMotion';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { CheckCheck, Link2, Lock, PanelLeft, Workflow } from 'lucide-react';
 import AuthPanel from './components/AuthPanel';
+import TasksPage from './components/TasksPage';
 import WorkspacePanel from './components/WorkspacePanel';
 import CollaborativeEditor from './components/CollaborativeEditor';
 import { ShellNavigation, WeaveMark, type NavigationTarget, type PageTab } from './components/ShellNavigation';
@@ -9,6 +11,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { useAuth } from './auth/AuthContext';
 import { currentRoom } from './lib/room';
 import { cn } from './lib/utils';
+import { Toaster } from './components/ui/sonner';
+import { motion, useAnimationControls } from 'motion/react';
 
 const guestName = `访客 ${Math.floor(Math.random() * 900 + 100)}`;
 const titles: Record<PageTab,string> = {document:'产品需求文档',workflow:'用户流程',tasks:'开发任务',workspace:'工作空间'};
@@ -25,6 +29,9 @@ function PlanningPage({ tab }: { tab: 'workflow' | 'tasks' }) {
 export default function App() {
   const { status, session } = useAuth();
   const [tab, setTab] = useState<PageTab>(()=>{const view=new URLSearchParams(location.search).get('view');return view==='workspace'||view==='workflow'||view==='tasks'?view:'document';});
+  const [surfaceTab, setSurfaceTab] = useState(tab);
+  const displayed = useRef(tab);
+  const pageMotion = useAnimationControls(), reduce = useReducedMotion();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktop, setDesktop] = useState(() => matchMedia('(min-width:901px)').matches);
@@ -81,7 +88,26 @@ export default function App() {
     if (event.pointerType === 'mouse' && event.button === 0 && document.activeElement?.closest('.bn-editor')) event.preventDefault();
   }
   const active = tab;
+  useEffect(() => {
+    let cancelled = false;
+    pageMotion.stop();
+    if (displayed.current === tab) { pageMotion.set({ opacity: 1, y: 0 }); return; }
+    const show = () => {
+      displayed.current = tab; setSurfaceTab(tab);
+      if (mainRegion.current) { mainRegion.current.scrollTop = 0; mainRegion.current.focus({ preventScroll: true }); }
+    };
+    if (reduce || tab === 'document') { show(); pageMotion.set({ opacity: 1, y: 0 }); return; }
+    void (async () => {
+      // 同一容器先轻淡出、再替换正文，不叠放两页，也不经过透明空白帧。
+      if (displayed.current !== 'document') await pageMotion.start({ opacity: .8, y: -2, transition: { duration: .04 } });
+      if (cancelled) return;
+      show(); pageMotion.set({ opacity: .8, y: 4 });
+      await pageMotion.start({ opacity: 1, y: 0, transition: { duration: .16, ease: [.22, 1, .36, 1] } });
+    })();
+    return () => { cancelled = true; pageMotion.stop(); };
+  }, [tab, reduce, pageMotion]);
   return <div className={cn('app-frame wf-ui', collapsed && 'sidebar-collapsed', composing && 'is-composing')} style={{'--sidebar-width':collapsed?'64px':'248px'} as CSSProperties}>
+    <Toaster/>
     <a className="skip-link" href="#main-content">跳到主要内容</a>
     <aside className="sidebar" aria-label="桌面侧栏">
       <div className="brand"><WeaveMark/><span>Weavefield</span></div>
@@ -108,24 +134,28 @@ export default function App() {
             }} group="mobile"/>
           </SheetContent>
         </Sheet>
-        <div className="breadcrumb"><span>{tab==='workspace'?'Weavefield':'Nova'}</span><span aria-hidden="true">/</span><strong>{tab === 'document' ? '本地协作演示' : tab==='workspace'?'真实工作空间':`${titles[tab]} · 规划中`}</strong></div>
+        <div className="breadcrumb"><span>{tab==='workspace'||tab==='tasks'?'Weavefield':'Nova'}</span><span aria-hidden="true">/</span><strong>{tab === 'document' ? '本地协作演示' : tab==='workspace'?'真实工作空间':tab==='tasks'?'开发任务':`${titles[tab]} · 规划中`}</strong></div>
         <div className="top-actions">
           <AuthPanel onOpenWorkspaces={openWorkspaces} loginTriggerRef={loginTrigger}/>
           {tab==='document'&&<div className="share-control"><Button variant="outline" size="sm" className="share-btn" onClick={share} disabled={shareStatus==='copying'} aria-label="复制本地演示链接" title="仅供同一台电脑的其他标签页或浏览器窗口使用，其他电脑无法访问"><Link2 data-icon="inline-start"/><span>{shareStatus==='copying'?'复制中…':'复制本地演示链接'}</span></Button>
           {(shareStatus==='success'||shareStatus==='error')&&<p className="share-feedback" role="status">{shareStatus==='success'?'已复制本地演示链接，仅供这台电脑的其他标签页或浏览器窗口使用。':'复制失败，请手动复制地址栏链接；该链接仅限这台电脑使用。'}</p>}</div>}
         </div>
       </header>
-      <div className="boundary-strip"><span className="demo-pill"><Lock aria-hidden="true"/>{tab==='workspace'?'真实工作空间':'本地演示'}</span><span>{tab==='workspace'?'当前仅文档元数据 · 服务端验证权限':'登录不授予 Nova 协作权限'}</span></div>
+      <div className="boundary-strip"><span className="demo-pill"><Lock aria-hidden="true"/>{tab==='workspace'?'真实工作空间':tab==='tasks'?'真实任务':'本地演示'}</span><span>{tab==='workspace'?'当前仅文档元数据 · 服务端验证权限':tab==='tasks'?'任务保存于真实空间 · 服务端验证权限':'登录不授予 Nova 协作权限'}</span></div>
       <main ref={mainRegion} id="main-content" className="workspace-body" tabIndex={-1} aria-label={titles[tab]} onCompositionStartCapture={()=>setComposing(true)} onCompositionEndCapture={()=>setComposing(false)}>
         {/* 保持编辑器、provider 和 Y.Doc 的实例，导航只改变可见表面。 */}
         <section className="document-view" hidden={tab!=='document'} aria-label="Nova 本地协作文档">
           <header className="document-head"><p className="document-kind">Nova / 本地协作演示</p><h1>产品需求文档</h1><p className="description">同一份文档，让讨论和修改保持连贯。</p><div className="doc-meta"><span>{guestName}</span><span>Yjs + Hocuspocus</span><span>仅限 localhost</span></div></header>
           <div className="editor-card"><CollaborativeEditor room={room} guestName={guestName}/></div>
         </section>
-        <WorkspacePanel open={tab==='workspace'} onClose={closeWorkspaces} onLogin={()=>loginTrigger.current?.click()}/>
-        {(tab==='workflow'||tab==='tasks')&&<PlanningPage tab={tab}/>}
+        <motion.div className="route-surface" data-route={surfaceTab} hidden={tab==='document'}
+          inert={tab!==surfaceTab} aria-hidden={tab!==surfaceTab} initial={false} animate={pageMotion}>
+          <WorkspacePanel open={surfaceTab==='workspace'} onClose={closeWorkspaces} onLogin={()=>loginTrigger.current?.click()}/>
+          <TasksPage open={surfaceTab==='tasks'} onLogin={()=>loginTrigger.current?.click()} onWorkspaces={openWorkspaces}/>
+          {surfaceTab==='workflow'&&<PlanningPage tab={surfaceTab}/>}
+        </motion.div>
       </main>
-      <footer className="status-bar"><span>Weavefield · {tab==='workspace'?'真实工作空间':'本地协作演示'}</span><span>真实工作空间仅管理文档元数据</span></footer>
+      <footer className="status-bar"><span>Weavefield · {tab==='workspace'?'真实工作空间':tab==='tasks'?'真实任务看板':'本地协作演示'}</span><span>真实任务与 Nova 本地演示独立</span></footer>
     </div>
   </div>;
 }

@@ -11,8 +11,12 @@ export function WorkspaceEmpty({ title, description, children }: {title:string;d
 export function WorkspaceErrorMessage({ children }: {children:ReactNode}) {
   return <Alert variant="destructive" className="workspace-error"><AlertDescription>{children}</AlertDescription></Alert>;
 }
-export function WorkspaceLoading({ children }: {children:ReactNode}) {
-  return <div className="workspace-loading" role="status"><span>{children}</span><div aria-hidden="true"><Skeleton/><Skeleton/><Skeleton/></div></div>;
+export function WorkspaceLoading({ children, kind = 'documents' }: {children:ReactNode;kind?:'workspace'|'documents'|'tasks'|'members'}) {
+  const rows = <>{[0,1,2].map(row=><div className="loading-row" key={row}><Skeleton className="loading-icon"/><div><Skeleton/><Skeleton/></div></div>)}</>;
+  return <div className="workspace-loading" role="status"><span>{children}</span><div aria-hidden="true" className={`loading-structure loading-${kind}`}>
+    {kind==='tasks' ? <div className="loading-task-board">{[0,1,2].map(column=><div className="loading-task-column" key={column}><Skeleton className="loading-column-title"/>{[0].map(card=><div className="loading-task-card" key={card}><Skeleton/><Skeleton/><Skeleton/></div>)}</div>)}</div>
+      : kind==='workspace' ? <><div className="loading-tabs"><Skeleton/><Skeleton/><Skeleton/></div>{rows}<div className="loading-members"><Skeleton className="loading-icon"/><Skeleton className="loading-icon"/><Skeleton className="loading-icon"/></div></> : rows}
+  </div></div>;
 }
 export function WorkspaceDialog({ open, onOpenChange, title, description, pending, children, restoreFocus }: {
   open:boolean;onOpenChange:(open:boolean)=>void;title:string;description:string;pending:boolean;children:ReactNode;restoreFocus:RefObject<HTMLElement|null>;

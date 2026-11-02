@@ -12,6 +12,8 @@ export type DocumentMetadata = { id: string; workspaceId: string; title: string;
 export const workspaceSlugSchema = z.string().min(3).max(64).regex(/^[a-z0-9-]+$/);
 export const taskStatusSchema = z.enum(['TODO', 'IN_PROGRESS', 'DONE']);
 export const entityKindSchema = z.enum(['DOCUMENT_BLOCK', 'BOARD_NODE', 'TASK']);
+export type TaskStatus = z.infer<typeof taskStatusSchema>;
+export type TaskMetadata = { id: string; workspaceId: string; title: string; description: string | null; status: TaskStatus; version: number };
 export type EntityKind = z.infer<typeof entityKindSchema>;
 
 export const entityLinkSchema = z.object({

@@ -1,3 +1,5 @@
+import { choose } from '../helpers/select';
+import { e2eOrigin } from '../helpers/e2e-address';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -9,7 +11,7 @@ const apiRequire = createRequire(path.resolve('apps/api/package.json'));
 test.use({ trace: 'off' });
 const run = `uiws-${randomUUID()}`;
 const password = 'Workspace browser password 42!';
-const headers = { Origin: 'http://127.0.0.1:15173', 'X-Weavefield-Request': '1' };
+const headers = { Origin: e2eOrigin, 'X-Weavefield-Request': '1' };
 const accounts = {
   owner: { email: `${run}-owner@example.invalid`, displayName: '空间管理员', id: '' },
   colleague: { email: `${run}-colleague@example.invalid`, displayName: '空间同事', id: '' },
@@ -70,7 +72,7 @@ test('real workspace creation, switching and refresh recovery stay separate from
       await expect(dialog.getByRole('heading', { name, exact: true })).toBeVisible();
       await expect(dialog.getByTestId('workspace-role')).toHaveText('OWNER');
     }
-    await dialog.getByLabel('当前工作空间', { exact: true }).selectOption({ label: '真实空间甲' });
+    await choose(dialog.getByLabel('当前工作空间', { exact: true }), { label: '真实空间甲' });
     await expect(dialog.getByRole('heading', { name: '真实空间甲', exact: true })).toBeVisible();
     await page.reload(); dialog = await open(page);
     await expect(dialog.getByRole('heading', { name: '真实空间甲', exact: true })).toBeVisible();
@@ -91,7 +93,7 @@ async function createSpace(context: BrowserContext, suffix: string, name = '成�
 }
 async function selectSpace(page: Page, id: string, actor: keyof typeof accounts = 'owner') {
   const dialog = await open(page, actor);
-  await dialog.getByLabel('当前工作空间', { exact: true }).selectOption(id);
+  await choose(dialog.getByLabel('当前工作空间', { exact: true }), id);
   await expect(dialog.getByTestId('workspace-role')).toBeVisible();
   // 角色出现时，子面板的初始鉴权请求可能尚未完成；过期 Session 前先等待其落地。
   const documents = dialog.getByRole('region', { name: '空间文档', exact: true });
@@ -107,7 +109,7 @@ test('owner manages real members while editor, viewer and removed users see the 
     const space = await createSpace(owner.context, 'members');
     const dialog = await selectSpace(owner.page, space.id);
     await dialog.getByLabel('成员邮箱', { exact: true }).fill(accounts.colleague.email.toUpperCase());
-    await dialog.getByLabel('新成员角色', { exact: true }).selectOption('EDITOR');
+    await choose(dialog.getByLabel('新成员角色', { exact: true }), 'EDITOR');
     await dialog.getByRole('button', { name: '添加成员', exact: true }).click();
     await expect(dialog.getByTestId('workspace-member')).toHaveCount(2);
     const reader = await selectSpace(colleague.page, space.id, 'colleague');
@@ -115,7 +117,7 @@ test('owner manages real members while editor, viewer and removed users see the 
     await expect(reader.getByRole('form', { name: '添加已有账号' })).toHaveCount(0);
     await expect(reader.getByRole('button', { name: '保存空间名称' })).toHaveCount(0);
     await expect(reader.getByTestId('workspace-member')).toHaveCount(2);
-    await dialog.getByLabel('空间同事的角色', { exact: true }).selectOption('VIEWER');
+    await choose(dialog.getByLabel('空间同事的角色', { exact: true }), 'VIEWER');
     await dialog.getByRole('button', { name: '更新空间同事角色', exact: true }).click();
     await expect(dialog.getByTestId('workspace-member').filter({ hasText: accounts.colleague.email })).toContainText('VIEWER');
     await reader.getByRole('button', { name: '刷新工作空间', exact: true }).click();

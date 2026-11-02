@@ -76,7 +76,7 @@ test('all real Controller route methods and paths exactly match the 18 documente
     }
   }
   const published = Object.entries(document.paths).flatMap(([path, methods]) => Object.keys(methods).map(method => `${method} ${path}`));
-  assert.equal(actual.length, 18);
+  assert.equal(actual.length, 22);
   assert.deepEqual(published.sort(), actual.sort());
 });
 

@@ -4,6 +4,7 @@
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "./theme.css";
 @import "./workspace.css";
+@import "./experience.css";
 
 @custom-variant dark (&:where(.wf-theme-dark, .wf-theme-dark *));
 

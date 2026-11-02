@@ -1,3 +1,4 @@
+import { e2eOrigin, e2eCollabHttp, e2eCollabPort } from '../helpers/e2e-address';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -9,15 +10,15 @@ import { expect, test, type Browser, type BrowserContext, type Page } from '@pla
 const apiRequire=createRequire(path.resolve('apps/api/package.json'));
 const localRequire=createRequire(path.resolve('package.json'));
 const run=`ui202-${randomUUID()}`,email=`${run}@example.invalid`,password='UI202 browser test password 42!';
-const headers={Origin:'http://127.0.0.1:15173','X-Weavefield-Request':'1'};
+const headers={Origin:e2eOrigin,'X-Weavefield-Request':'1'};
 let prisma:any,authApi:any,authBase:string,storage:string,collab:ChildProcess;
 test.use({trace:'off',video:'on'});
 async function startAuth(){apiRequire('reflect-metadata');process.env.WEB_ORIGIN=headers.Origin;authApi=await apiRequire('./dist/application').createApplication();await authApi.listen(0,'127.0.0.1');authBase=await authApi.getUrl();}
 test.beforeAll(async({browser})=>{
   prisma=await localRequire('./tests/helpers/database.cjs').prepareDatabase();await startAuth();const c=await browser.newContext();
   try{expect((await c.request.post(`${authBase}/auth/register`,{headers,data:{email,password,displayName:'UI2 页面管理员'}})).status()).toBe(201);}finally{await c.close();}
-  storage=await mkdtemp(path.join(tmpdir(),'weavefield-ui202-'));collab=spawn(process.execPath,['--import',path.resolve('apps/collab/node_modules/tsx/dist/loader.mjs'),path.resolve('apps/collab/src/index.ts')],{cwd:storage,env:{...process.env,NODE_ENV:'test',COLLAB_PORT:'11234',COLLAB_DEV_TOKEN:'m0-e2e-local-only-token'},stdio:'ignore'});
-  await expect.poll(()=>fetch('http://127.0.0.1:11234').then(r=>r.ok).catch(()=>false)).toBe(true);
+  storage=await mkdtemp(path.join(tmpdir(),'weavefield-ui202-'));collab=spawn(process.execPath,['--import',path.resolve('apps/collab/node_modules/tsx/dist/loader.mjs'),path.resolve('apps/collab/src/index.ts')],{cwd:storage,env:{...process.env,NODE_ENV:'test',COLLAB_PORT:String(e2eCollabPort),COLLAB_DEV_TOKEN:'m0-e2e-local-only-token'},stdio:'ignore'});
+  await expect.poll(()=>fetch(e2eCollabHttp).then(r=>r.ok).catch(()=>false)).toBe(true);
 });
 test.beforeEach(async()=>{await authApi.close();await startAuth();});
 test.afterEach(async()=>{await prisma.workspace.deleteMany({where:{slug:{startsWith:run}}});});
@@ -52,7 +53,7 @@ for(const width of [1440,390])for(const reducedMotion of ['no-preference','reduc
     const detail=docs.getByRole('region',{name:'文档元数据',exact:true});await expect(detail.getByRole('heading')).toHaveText('正式元数据文档');await expect(detail.locator('[contenteditable]')).toHaveCount(0);
     await page.screenshot({path:info.outputPath(`${width}-${reducedMotion}-detail.png`)});
     await detail.getByRole('button',{name:'归档文档',exact:true}).click();const confirmation=page.getByRole('dialog',{name:'确认归档文档',exact:true});await expect(confirmation).toBeVisible();await page.keyboard.press('Escape');await expect(confirmation).toHaveCount(0);expect((await (await page.context().request.get(`/api/workspaces/${item.id}/documents`)).json()).length).toBe(1);
-    await detail.getByRole('button',{name:'归档文档',exact:true}).click();await confirmation.getByRole('button',{name:'确认归档文档',exact:true}).click();await expect(docs).toContainText('文档已归档');await expect(docs.getByRole('list')).toBeEmpty();
+    await detail.getByRole('button',{name:'归档文档',exact:true}).click();await confirmation.getByRole('button',{name:'确认归档文档',exact:true}).click();await expect(page.locator('[data-sonner-toast]')).toContainText('文档已归档');await expect(docs.getByRole('list')).toBeEmpty();
     await region.getByRole('button',{name:'返回 Nova 本地演示',exact:true}).click();await expect(editor).toBeVisible();await expect(editor).toContainText('Nova 正文必须保留。');expect(await editor.evaluate((e:any)=>e===(window as any).novaNode&&e.editor===(window as any).novaEditor)).toBe(true);expect(sockets).toBe(initialSockets);
     await page.goBack();await expect(region).toBeVisible();await expect(region.getByRole('heading',{name:item.name,exact:true})).toBeVisible();await page.goForward();await expect(editor).toBeVisible();expect(await editor.evaluate((e:any)=>e.editor===(window as any).novaEditor)).toBe(true);
     const keys=await page.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('weavefield.workspace.')).map(k=>localStorage.getItem(k)));expect(keys).toEqual([item.id]);expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);

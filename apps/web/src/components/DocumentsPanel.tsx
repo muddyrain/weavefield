@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { DocumentMetadata, WorkspaceSummary } from '@weavefield/shared';
 import { useAuth } from '../auth/AuthContext';
+import { toast } from 'sonner';
 import { FileText, Plus, RefreshCw, ChevronRight, X, Archive } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -11,7 +12,7 @@ class DocumentError extends Error {
   constructor(message: string, readonly status: number, readonly listRequest: boolean) { super(message); }
 }
 
-export default function DocumentsPanel({ workspace, workspacePending, onWritePendingChange }: { workspace: WorkspaceSummary; workspacePending: boolean; onWritePendingChange: (value: boolean) => boolean }) {
+export default function DocumentsPanel({ workspace, workspacePending, onWritePendingChange, refreshToken = 0, manualRefresh = false }: { workspace: WorkspaceSummary; workspacePending: boolean; refreshToken?: number; manualRefresh?: boolean; onWritePendingChange: (value: boolean) => boolean }) {
   const { clearSession } = useAuth();
   const [items, setItems] = useState<DocumentMetadata[]>([]);
   const [detail, setDetail] = useState<DocumentMetadata | null>(null);
@@ -21,7 +22,8 @@ export default function DocumentsPanel({ workspace, workspacePending, onWritePen
   const [pending, setPending] = useState(false);
   const [denied, setDenied] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const loaded = useRef(false), writing = useRef(false), selectedId = useRef(''), previousRefresh = useRef(refreshToken);
   const [creating, setCreating] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [writeCommitted, setWriteCommitted] = useState(false);
@@ -42,14 +44,24 @@ export default function DocumentsPanel({ workspace, workspacePending, onWritePen
     return response.json();
   }, [root, current, clearSession]);
   const reload = useCallback(async () => {
-    const stamp = ++revision.current;
-    setWriteCommitted(false); setLoading(true); setReading(false); setDetail(null); setSelected(''); setItems([]); setError(''); setNotice('');
+    if (writing.current) return;
+    const stamp = ++revision.current, background = loaded.current;
+    setWriteCommitted(false); setLoading(!background); setRefreshing(background); setReading(false); setError('');
     try {
       const list = await api<DocumentMetadata[]>('', 'GET', undefined, stamp);
-      if (current(stamp)) setItems(list);
+      if (!current(stamp)) return;
+      setItems(list); loaded.current = true;
+      const selected = list.find(item => item.id === selectedId.current);
+      if (!selected) { setDetail(null); setSelected(''); selectedId.current = ''; }
+      // 列表与详情使用同一元数据 DTO；可完成被此次刷新取代的详情读取。
+      else setDetail(selected);
     } catch (error) {
-      if (current(stamp)) setError(error instanceof Error ? error.message : '无法连接文档服务');
-    } finally { if (current(stamp)) setLoading(false); }
+      if (!current(stamp)) return;
+      if (!background || error instanceof DocumentError && [401,403,404].includes(error.status)) {
+        setItems([]); setDetail(null); setSelected(''); selectedId.current = ''; loaded.current = false;
+      }
+      setError(error instanceof Error ? error.message : '无法连接文档服务');
+    } finally { if (current(stamp)) { setLoading(false); setRefreshing(false); } }
   }, [api, current]);
   useEffect(() => {
     alive.current = true;
@@ -58,9 +70,19 @@ export default function DocumentsPanel({ workspace, workspacePending, onWritePen
     return () => { alive.current = false; revision.current++; onWritePendingChange(false); };
   }, [reload, onWritePendingChange]);
 
+  useEffect(() => {
+    if (previousRefresh.current === refreshToken) return;
+    previousRefresh.current = refreshToken;
+    // 自动读取不能清掉草稿或“已提交但后续读取失败”的恢复状态。
+    // 账号/角色变化仍由父级 key 和 AuthContext 独立清理。
+    if (creating || archiving && detail || writeCommitted && !manualRefresh || writing.current) return;
+    // 父级成功刷新后更新列表，保持本控制器、详情和草稿 DOM。
+    void reload();
+  }, [refreshToken, manualRefresh, reload, creating, archiving, writeCommitted, detail]);
+
   async function handleFailure(error: unknown, stamp: number, id: string) {
     if (!current(stamp)) return;
-    setDetail(null); setSelected('');
+    setDetail(null); setSelected(''); selectedId.current = ''; setArchiving(false);
     if (error instanceof DocumentError && error.status === 403) setDenied(true);
     setError(error instanceof Error ? error.message : '文档请求失败，请重试');
     if (error instanceof DocumentError && error.listRequest && (error.status === 404 || error.status === 403)) setItems([]);
@@ -79,8 +101,9 @@ export default function DocumentsPanel({ workspace, workspacePending, onWritePen
   }
 
   async function select(id: string) {
+    if (writing.current || workspacePending) return;
     const stamp = ++revision.current;
-    setSelected(id); setDetail(null); setReading(true); setError(''); setNotice('');
+    selectedId.current = id; setSelected(id); setDetail(null); setReading(true); setError('');
     try {
       const document = await api<DocumentMetadata>(`/${id}`, 'GET', undefined, stamp);
       if (current(stamp)) setDetail(document);
@@ -89,26 +112,27 @@ export default function DocumentsPanel({ workspace, workspacePending, onWritePen
     } finally { if (current(stamp)) setReading(false); }
   }
   async function mutate(suffix: string, method: string, body: unknown, archived = false) {
-    if (!onWritePendingChange(true)) return false;
+    if (writing.current || !onWritePendingChange(true)) return false;
+    writing.current = true;
     const stamp = ++revision.current;
-    setWriteCommitted(false); setPending(true); setReading(false); setError(''); setNotice('');
+    setWriteCommitted(false); setPending(true); setRefreshing(false); setReading(false); setError('');
     try {
       const document = await api<DocumentMetadata>(suffix, method, body, stamp);
       if (!current(stamp)) return false;
       setWriteCommitted(true);
       // 归档已由真实响应确认，刷新失败时也不能继续把它列为活跃文档。
-      if (archived) { setItems(list=>list.filter(item=>item.id!==document.id));setDetail(null);setSelected(''); }
+      if (archived) { setItems(list=>list.filter(item=>item.id!==document.id));setDetail(null);setSelected('');selectedId.current=''; }
       const list = await api<DocumentMetadata[]>('', 'GET', undefined, stamp);
       if (!current(stamp)) return false;
-      setItems(list); setDetail(archived ? null : document); setSelected(archived ? '' : document.id);
-      setWriteCommitted(false); setNotice(archived ? '文档已归档' : '文档已保存');
+      setItems(list); setDetail(archived ? null : document); setSelected(archived ? '' : document.id); selectedId.current = archived ? '' : document.id;
+      setWriteCommitted(false); toast.success(archived ? '文档已归档' : '文档已保存', { id: 'document-save' });
       return true;
     } catch (error) {
       await handleFailure(error, stamp, selected);
       return false;
     } finally {
       // 卸载时已释放旧空间标记；迟到响应不能清掉新控制器正在使用的标记。
-      if (alive.current) onWritePendingChange(false);
+      writing.current = false; if (alive.current) onWritePendingChange(false);
       if (current(stamp)) setPending(false);
     }
   }
@@ -121,16 +145,16 @@ export default function DocumentsPanel({ workspace, workspacePending, onWritePen
   const disabled = loading || pending || workspacePending;
   const formOpen = creating && canWrite;
   const confirmOpen = archiving && Boolean(detail) && canWrite;
-  return <section className="workspace-documents" aria-label="空间文档">
+  return <section className="workspace-documents" aria-label="空间文档" aria-busy={loading || refreshing || pending}>
     <div className="workspace-section-heading"><div><h2>文档</h2><p className="document-boundary">真实文档的标题与元数据。正文实时协作将在 M2 实现。</p></div>
-      <div className="workspace-actions"><Button ref={refreshTrigger} type="button" variant="ghost" disabled={pending} onClick={()=>void reload()}><RefreshCw data-icon="inline-start"/>刷新文档</Button>
+      <div className="workspace-actions"><Button ref={refreshTrigger} data-refreshing={refreshing} type="button" variant="ghost" disabled={pending||workspacePending} onClick={()=>void reload()}><RefreshCw data-icon="inline-start"/>刷新文档</Button>
         {canWrite&&<Button ref={createTrigger} disabled={disabled} onClick={()=>setCreating(true)}><Plus data-icon="inline-start"/>新建文档</Button>}</div>
     </div>
     {loading&&<WorkspaceLoading>正在加载文档…</WorkspaceLoading>}
     {reading&&<p role="status">正在读取文档…</p>}{pending&&<p role="status">正在保存文档…</p>}
     {error&&!formOpen&&!confirmOpen&&<WorkspaceErrorMessage>{error}</WorkspaceErrorMessage>}
     {writeCommitted&&error&&<p role="status">操作已由服务端完成，但列表刷新失败。请刷新文档核对，避免重复提交。</p>}
-    {notice&&<p role="status" className="workspace-notice">{notice}</p>}
+    {refreshing&&<p role="status" className="refresh-progress">正在刷新文档，现有内容保持可用…</p>}
     {denied&&<p className="workspace-readonly">文档写入权限已变化，请刷新工作空间获取最新角色。</p>}
     {!canWrite&&<p className="workspace-readonly">文档只读：可查看标题和元数据。</p>}
     {!loading&&!error&&items.length===0&&<WorkspaceEmpty title="这个空间还没有文档。" description={canWrite?'创建一份文档元数据，整理团队的工作内容。':'当前空间没有可查看的文档元数据。'}/>}
@@ -141,10 +165,10 @@ export default function DocumentsPanel({ workspace, workspacePending, onWritePen
         </Button>
       </li>)}</ul>
       {detail&&<section className="workspace-document-detail" aria-label="文档元数据">
-        <div className="document-detail-heading"><Badge variant="outline">仅元数据</Badge><Button variant="ghost" size="icon" aria-label="关闭文档详情" disabled={pending} onClick={()=>{revision.current++;setDetail(null);setSelected('');setReading(false);refreshTrigger.current?.focus({preventScroll:true});}}><X/></Button></div>
+        <div className="document-detail-heading"><Badge variant="outline">仅元数据</Badge><Button variant="ghost" size="icon" aria-label="关闭文档详情" disabled={pending} onClick={()=>{if(writing.current)return;revision.current++;setDetail(null);setSelected('');selectedId.current='';setReading(false);refreshTrigger.current?.focus({preventScroll:true});}}><X/></Button></div>
         <h3>{detail.title}</h3><dl className="workspace-properties"><dt>文档编号</dt><dd>{detail.id}</dd><dt>创建时间</dt><dd>{new Date(detail.createdAt).toLocaleString('zh-CN')}</dd><dt>更新时间</dt><dd>{new Date(detail.updatedAt).toLocaleString('zh-CN')}</dd></dl>
         <p className="metadata-note">当前仅保存文档元数据。正文编辑尚未开放，不会连接到 Nova 本地协作演示。</p>
-        {canWrite&&<><form key={`${detail.id}:${detail.title}`} aria-label="重命名文档" onSubmit={event=>{event.preventDefault();const data=new FormData(event.currentTarget);void mutate(`/${detail.id}`,'PATCH',{title:data.get('title')});}}>
+        {canWrite&&<><form key={detail.id} aria-label="重命名文档" onSubmit={event=>{event.preventDefault();const data=new FormData(event.currentTarget);void mutate(`/${detail.id}`,'PATCH',{title:data.get('title')});}}>
           <label>文档标题<Input name="title" required maxLength={200} defaultValue={detail.title} disabled={disabled}/></label><Button variant="outline" disabled={disabled}>保存文档标题</Button></form>
           <Button variant="destructive" disabled={disabled} onClick={()=>setArchiving(true)}><Archive data-icon="inline-start"/>归档文档</Button><small>归档后将从当前列表移除；本阶段暂不支持恢复。</small>
         </>}

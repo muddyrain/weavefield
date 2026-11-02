@@ -1,3 +1,5 @@
+import { choose } from '../helpers/select';
+import { e2eOrigin } from '../helpers/e2e-address';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -6,7 +8,7 @@ const localRequire = createRequire(path.resolve('package.json'));
 const { prepareDatabase } = localRequire('./tests/helpers/database.cjs');
 const apiRequire = createRequire(path.resolve('apps/api/package.json'));
 const run = `uidoc-${randomUUID()}`;
-const headers = { Origin: 'http://127.0.0.1:15173', 'X-Weavefield-Request': '1' };
+const headers = { Origin: e2eOrigin, 'X-Weavefield-Request': '1' };
 const password = 'Document browser password 42!';
 const accounts = Object.fromEntries(['owner', 'editor', 'viewer', 'outsider'].map(actor => [actor, { email: `${run}-${actor}@example.invalid`, displayName: `文档${actor}`, id: '' }])) as Record<string, { email: string; displayName: string; id: string }>;
 let prisma: Awaited<ReturnType<typeof prepareDatabase>>;
@@ -55,7 +57,7 @@ async function createDocument(context: BrowserContext, workspaceId: string, titl
 async function open(page: Page, workspaceId: string, actor = 'owner') {
   await page.getByRole('button', { name: accounts[actor]!.displayName, exact: true }).click();
   const dialog = page.getByRole('region', { name: '我的工作空间', exact: true });
-  await dialog.getByLabel('当前工作空间', { exact: true }).selectOption(workspaceId);
+  await choose(dialog.getByLabel('当前工作空间', { exact: true }), workspaceId);
   const panel = dialog.getByRole('region', { name: '空间文档', exact: true });
   // 先等面板存在，避免空 Locator 的负向断言在初始请求前抢先通过。
   await expect(panel).toBeVisible();
@@ -110,7 +112,7 @@ test('owner creates real metadata, renames across refresh and soft archives with
     await expect(detail.getByRole('heading')).toHaveText('刷新后仍然存在的标题');
     await detail.getByRole('button', { name: '归档文档', exact: true }).click();
     await page.getByRole('dialog',{name:'确认归档文档',exact:true}).getByRole('button',{name:'确认归档文档',exact:true}).click();
-    await expect(panel).toContainText('文档已归档'); await expect(panel.getByRole('list')).toBeEmpty();
+    await expect(page.locator('[data-sonner-toast]')).toContainText('文档已归档'); await expect(panel.getByRole('list')).toBeEmpty();
     await expect(detail).toHaveCount(0);
     expect((await context.request.get(`/api/workspaces/${workspace.id}/documents/${rows[0].id}`)).status()).toBe(404);
     expect((await prisma.document.findUnique({ where: { id: rows[0].id } })).archivedAt).not.toBeNull();
@@ -176,7 +178,7 @@ test('late document and workspace responses cannot overwrite newer selections', 
       const response = await route.fetch(); enteredWorkspace(); await workspaceGate; await route.fulfill({ response });
     });
     await panel.getByRole('button', { name: old.title, exact: true }).click(); await workspaceStarted;
-    await dialog.getByLabel('当前工作空间', { exact: true }).selectOption(b.id);
+    await choose(dialog.getByLabel('当前工作空间', { exact: true }), b.id);
     await expect(panel.getByRole('button', { name: '乙空间文档', exact: true })).toBeVisible();
     const oldWorkspaceCompleted = page.waitForResponse(response => response.url().endsWith(`/documents/${old.id}`));
     releaseWorkspace(); await (await oldWorkspaceCompleted).finished();
@@ -195,7 +197,7 @@ test('loading, network failure and refresh recovery never claim an empty success
     await page.route(`**/api/workspaces/${workspace.id}/documents`, async route => { await gate; await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: '文档服务暂时不可用' }) }); });
     await page.getByRole('button', { name: accounts.owner!.displayName, exact: true }).click();
     const dialog = page.getByRole('region', { name: '我的工作空间', exact: true });
-    await dialog.getByLabel('当前工作空间', { exact: true }).selectOption(workspace.id);
+    await choose(dialog.getByLabel('当前工作空间', { exact: true }), workspace.id);
     const panel = dialog.getByRole('region', { name: '空间文档' });
     await expect(panel.getByRole('status')).toHaveText('正在加载文档…');
     await expect(panel.getByRole('button', { name: '新建文档', exact: true })).toBeDisabled();
@@ -399,7 +401,7 @@ for (const target of ['document', 'workspace'] as const) {
         const response = await context.request.patch(`${root}/${b.id}`, { headers, data: { title: '新的选中文档' } });
         expect(response.status()).toBe(200); fresh = await response.json();
       }
-      if (target === 'workspace') await dialog.getByLabel('当前工作空间', { exact: true }).selectOption(next.id);
+      if (target === 'workspace') await choose(dialog.getByLabel('当前工作空间', { exact: true }), next.id);
       else await panel.getByRole('button', { name: '刷新文档' }).click();
       await panel.getByRole('button', { name: fresh.title, exact: true }).click();
       await expect(panel.getByRole('heading', { level: 3 })).toHaveText(fresh.title);

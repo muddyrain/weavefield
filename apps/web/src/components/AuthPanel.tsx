@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent, type Ref } from 'react';
 import type { AuthSession as Session } from '@weavefield/shared';
 import { useAuth } from '../auth/AuthContext';
+import { toast } from 'sonner';
 
 export default function AuthPanel({ onOpenWorkspaces, loginTriggerRef }: { onOpenWorkspaces: () => void; loginTriggerRef?: Ref<HTMLButtonElement> }) {
   const { status, session, sessionNotice, refresh, cancelRefresh, acceptSession, clearSession } = useAuth();
@@ -33,7 +34,7 @@ export default function AuthPanel({ onOpenWorkspaces, loginTriggerRef }: { onOpe
       const response = await write(mode, { email, password, ...(mode === 'register' ? { displayName } : {}) });
       const data: Session = await response.json();
       acceptSession(data); dialog.current?.close();
-      setNotice(mode === 'register' ? '注册成功，已登录' : '登录成功');
+      toast.success(mode === 'register' ? '注册成功，已登录' : '登录成功', { id: 'auth-result' });
     } catch (error) { setError(error instanceof Error ? error.message : '连接认证服务失败，请重试'); }
     finally { setPending(false); }
   }
@@ -41,7 +42,7 @@ export default function AuthPanel({ onOpenWorkspaces, loginTriggerRef }: { onOpe
     cancelRefresh(); setPending(true); setError(''); setNotice('');
     try {
       await write('logout', {});
-      clearSession(); setNotice('已退出登录');
+      clearSession(); toast.success('已退出登录', { id: 'auth-result' });
     } catch {
       setNotice('退出响应异常，请检查连接和当前登录状态');
       await refresh();

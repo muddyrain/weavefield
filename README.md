@@ -313,7 +313,7 @@ git ls-remote origin
 
 ## M1.5：本地 OpenAPI 与权限契约
 
-API 使用 `@nestjs/swagger` 11.4.7 从真实 NestJS Controller 注解生成 OpenAPI 3.0，覆盖 Auth 4、Workspace / Membership 8、Document 5、Health 1，共 18 个操作。声明模型仅用于文档；输入仍由原手写验证函数处理，不引入自动校验 Pipe，不改变 Cookie、CSRF 或 RBAC。
+API 使用 `@nestjs/swagger` 11.4.7 从真实 NestJS Controller 注解生成 OpenAPI 3.0，覆盖 Auth 4、Workspace / Membership 8、Document 5、Task 4、Health 1，共 22 个操作。声明模型仅用于文档；输入仍由原手写验证函数处理，不引入自动校验 Pipe，不改变 Cookie、CSRF 或 RBAC。
 
 默认关闭文档。仅在本地开发中，显式设置 `ENABLE_OPENAPI_DOCS=1` 后启动 API：
 
@@ -359,3 +359,17 @@ pnpm test:openapi
 ```
 
 该入口与现有 API 集成测试一样，要求独立 PostgreSQL 16 测试库及安全的 DATABASE_TEST_URL；自动化覆盖文档启停、生产关闭、真实路由/Schema/状态码、敏感字段和生成无业务副作用。CI 增加同一入口，保留全部既有检查；本地通过不等于尚未提交的 GitHub Actions 已通过。
+
+## M3-01：真实 Workspace 任务看板（本地候选）
+
+登录后在侧栏选择“开发任务”（`?view=tasks`），选择有权访问的真实工作空间。OWNER / EDITOR 可以新建任务、修改标题和纯文本描述、调整待办 / 进行中 / 已完成状态；VIEWER 仅可查看。任务写入 PostgreSQL，刷新恢复，不使用 Nova 演示数据。
+
+新建默认待办，允许同名任务；标题 1–200 字符、描述最多 1000 字符，继续受 4 KiB JSON 限制。修改携带 version，过期版本返回 409；页面保留草稿并提供“加载最新版本”。提交结果不明时先刷新核对，不自动重复创建。
+
+任务 API 为 `GET/POST /workspaces/:workspaceId/tasks`、`GET/PATCH /workspaces/:workspaceId/tasks/:taskId`。沿用现有 Session、CSRF、成员权限和跨空间 404 策略；不提供删除、指派、截止日期或关联功能，不新增 Migration。OpenAPI 当前新增 Task 4 个操作，合计 22 个。
+
+```bash
+pnpm test:tasks
+```
+
+该检查同样需要独立 PostgreSQL 16 `DATABASE_TEST_URL`。本轮为独立 M3-01 功能切片，不代表 M3 完成；M2 正式协作仍暂停。当前实现、实际验收及风险见 [M3-01 报告](docs/reports/M3-01.md)，等待人工 Code Review。

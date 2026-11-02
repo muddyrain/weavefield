@@ -1,3 +1,5 @@
+import { choose } from '../helpers/select';
+import { e2eOrigin } from '../helpers/e2e-address';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -7,7 +9,7 @@ const apiRequire = createRequire(path.resolve('apps/api/package.json'));
 const localRequire = createRequire(path.resolve('package.json'));
 const run = `ui202-race-${randomUUID()}`;
 const email = `${run}@example.invalid`, password = 'UI202 race local test password 42!';
-const headers = { Origin: 'http://127.0.0.1:15173', 'X-Weavefield-Request': '1' };
+const headers = { Origin: e2eOrigin, 'X-Weavefield-Request': '1' };
 let prisma: any, app: any, authBase: string;
 test.use({ trace: 'off', video: 'on' });
 
@@ -84,7 +86,7 @@ test('workspace POST keeps committed success when focus refresh races with the w
     expect(held.result()).toEqual({ status: 201, writes: 1 });
     await expect(dialog).toHaveCount(0);
     await expect(region.getByRole('heading', { name: '焦点切换期间创建的空间', exact: true })).toBeVisible();
-    await expect(region.getByRole('status').filter({ hasText: '工作空间已更新' })).toBeVisible();
+    await expect(page.locator('[data-sonner-toast]').filter({ hasText: '工作空间已更新' })).toBeVisible();
   } finally {
     held.release(); await held.finished;
     await page.screenshot({ path: info.outputPath('workspace-post-focus.png') });
@@ -102,7 +104,7 @@ test('workspace PATCH keeps success feedback when focus arrives after server com
     await region.getByRole('button', { name: '保存空间名称', exact: true }).click(); await held.reached;
     expect((await (await page.context().request.get(`/api/workspaces/${item.id}`)).json()).name).toBe('实际已改名空间');
     await refocus(page); held.release(); await held.finished;
-    await expect(region.getByRole('status').filter({ hasText: '工作空间已更新' })).toBeVisible();
+    await expect(page.locator('[data-sonner-toast]').filter({ hasText: '工作空间已更新' })).toBeVisible();
     await expect(region.getByRole('heading', { name: '实际已改名空间', exact: true })).toBeVisible();
     await expect(region.getByRole('button', { name: '保存空间名称', exact: true })).toBeEnabled();
   } finally {
@@ -130,7 +132,7 @@ for (const trigger of ['focus', 'visibilitychange', 'interval'] as const) test(`
     expect((await (await page.context().request.get(`/api/workspaces/${item.id}/documents`)).json()).length).toBe(1);
     expect(held.result()).toEqual({ status: 201, writes: 1 });
     await expect(dialog).toHaveCount(0);
-    await expect(docs.getByRole('status')).toContainText('文档已保存');
+    await expect(page.locator('[data-sonner-toast]')).toContainText('文档已保存');
     await expect(docs.getByRole('region', { name: '文档元数据', exact: true }).getByRole('heading')).toHaveText('焦点切换期间创建的文档');
     savedBeforeNextRefresh = true;
     await page.screenshot({ path: info.outputPath(`document-post-${trigger}-saved.png`) });
@@ -197,7 +199,7 @@ test('focus during workspace POST preserves committed state if its follow-up rea
     await expect(dialog).toHaveCount(0);
     await expect(region.getByLabel('当前工作空间', { exact: true })).toBeEnabled();
     const committed = list.find((item: any) => item.name === '提交成功但读取失败空间');
-    await region.getByLabel('当前工作空间', { exact: true }).selectOption(committed.id);
+    await choose(region.getByLabel('当前工作空间', { exact: true }), committed.id);
     await expect(region.getByRole('heading', { name: '提交成功但读取失败空间', exact: true })).toBeVisible();
     expect(held.result()).toEqual({ status: 201, writes: 1 });
   } finally { held.release(); await held.finished; }
@@ -248,7 +250,7 @@ async function prepareRename(page: Page) {
   await page.goto('/?view=workspace');
   const region = page.getByRole('region', { name: '我的工作空间', exact: true });
   await expect(region.getByTestId('workspace-role')).toHaveText('OWNER');
-  await region.getByLabel('当前工作空间', { exact: true }).selectOption(original.id);
+  await choose(region.getByLabel('当前工作空间', { exact: true }), original.id);
   const docs = region.getByRole('region', { name: '空间文档', exact: true });
   await docs.getByRole('button', { name: document.title, exact: true }).click();
   const detail = docs.getByRole('region', { name: '文档元数据', exact: true });
@@ -285,10 +287,11 @@ for (const action of ['refresh', 'switch'] as const) for (const phase of ['write
       if (action === 'refresh') { blocked = await refresh.isDisabled(); if (!blocked) await refresh.click(); }
       else {
         blocked = await selector.isDisabled();
-        if (!blocked) await selector.selectOption(next.id);
+        if (!blocked) await choose(selector, next.id);
         else {
-          // 重放排队的 change，验证 ref 在任何选择/缓存修改前拒绝切换。
-          await selector.evaluate((node, id) => { const select = node as HTMLSelectElement; select.value = id; select.dispatchEvent(new Event('change', { bubbles: true })); }, next.id);
+          // Radix 禁用触发器拒绝排队的指针事件，不开启可选菜单。
+          await selector.dispatchEvent('pointerdown', { button: 0, pointerType: 'mouse', ctrlKey: false });
+          await expect(page.getByRole('listbox')).toHaveCount(0);
           await expect(region.getByRole('heading', { name: original.name, exact: true })).toBeVisible();
           expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('weavefield.workspace.')).map(key => localStorage.getItem(key)))).toEqual([original.id]);
         }
@@ -298,12 +301,12 @@ for (const action of ['refresh', 'switch'] as const) for (const phase of ['write
       expect(held.result()).toEqual({ writes: 1, status: 200 });
       const actual = await (await page.context().request.get(`/api/workspaces/${original.id}/documents`)).json();
       expect(actual).toHaveLength(1); expect(actual[0].title).toBe('手动入口提交后标题');
-      await expect(docs.getByRole('status').filter({ hasText: '文档已保存' })).toBeVisible();
+      await expect(page.locator('[data-sonner-toast]').filter({ hasText: '文档已保存' })).toBeVisible();
       await expect(detail.getByRole('heading')).toHaveText('手动入口提交后标题');
       await page.screenshot({ path: info.outputPath(`${action}-${phase}-saved.png`) });
       await expect(refresh).toBeEnabled(); await expect(selector).toBeEnabled();
       await refresh.click(); await expect(docs.getByRole('button', { name: '手动入口提交后标题', exact: true })).toBeVisible();
-      await selector.selectOption(next.id); await expect(region.getByRole('heading', { name: next.name, exact: true })).toBeVisible();
+      await choose(selector, next.id); await expect(region.getByRole('heading', { name: next.name, exact: true })).toBeVisible();
     } finally {
       held.release(); await held.finished;
       await page.screenshot({ path: info.outputPath(`${action}-${phase}-final.png`) });
@@ -336,7 +339,7 @@ test('manual review parent write controls cannot reload a pending rename', async
     expect.soft(parentWrites).toBe(0);
     held.release(); await held.finished;
     await region.getByRole('tab', { name: '文档', exact: true }).click();
-    await expect(docs.getByRole('status').filter({ hasText: '文档已保存' })).toBeVisible(); expect(documentWrites).toBe(1);
+    await expect(page.locator('[data-sonner-toast]').filter({ hasText: '文档已保存' })).toBeVisible(); expect(documentWrites).toBe(1);
     expect((await (await page.context().request.get(`/api/workspaces/${original.id}`)).json()).name).toBe(original.name);
     await region.getByRole('tab', { name: '设置', exact: true }).click();
     await expect(save).toBeEnabled(); await region.getByLabel('空间名称', { exact: true }).fill('文档完成后可保存的空间名称'); await save.click();
@@ -390,6 +393,6 @@ test('manual review controls recover after the rename follow-up GET fails', asyn
     await expect(docs.getByRole('status')).toContainText('操作已由服务端完成');
     await expect(region.getByRole('button', { name: '刷新工作空间', exact: true })).toBeEnabled(); await expect(region.getByLabel('当前工作空间', { exact: true })).toBeEnabled();
     await region.getByRole('button', { name: '刷新工作空间', exact: true }).click(); await expect(docs.getByRole('button', { name: '手动入口提交后标题', exact: true })).toBeVisible();
-    await region.getByLabel('当前工作空间', { exact: true }).selectOption(next.id); await expect(region.getByRole('heading', { name: next.name, exact: true })).toBeVisible(); expect(held.result()).toEqual({ status: 200, writes: 1 });
+    await choose(region.getByLabel('当前工作空间', { exact: true }), next.id); await expect(region.getByRole('heading', { name: next.name, exact: true })).toBeVisible(); expect(held.result()).toEqual({ status: 200, writes: 1 });
   } finally { held.release(); await held.finished; }
 });

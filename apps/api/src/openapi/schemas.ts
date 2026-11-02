@@ -18,6 +18,9 @@ function trimmedText(max: number, controlsBeforeTrim: boolean): SchemaObject {
   return { type: 'string', pattern: `^${padding}${edge}(?:[^\\u0000-\\u001f\\u007f]{0,${max - 2}}${edge})?${padding}$`,
     description: `trim 后为 1–${max} 个 Unicode 字符；${controlsBeforeTrim ? '原始输入' : 'trim 后'}不能含 U+0000–001F、U+007F 控制字符。` };
 }
+const taskStatus: SchemaObject = { type: 'string', enum: ['TODO', 'IN_PROGRESS', 'DONE'] };
+const taskDescription: SchemaObject = { type: 'string', nullable: true, maxLength: 1000, pattern: '^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f]*$', description: '普通文本，最多 1000 个 Unicode 字符；允许换行/Tab，首尾空白移除，空白串保存为 null。' };
+const taskVersion: SchemaObject = { type: 'integer', minimum: 1, maximum: 2147483646 };
 const password: SchemaObject = { type: 'string', format: 'password', writeOnly: true, minLength: 8, maxLength: 128,
   description: '8–128 个 Unicode 字符，另受 UTF-8 最多 256 字节限制；不 trim、不回显。' };
 
@@ -30,6 +33,9 @@ export const schemas = {
   AddMemberInput: object({ email, role: { ...role, default: 'VIEWER', description: '仅省略时默认 VIEWER；null 非法。' } }, ['email']),
   ChangeRoleInput: object({ role }),
   DocumentTitleInput: object({ title: trimmedText(200, true) }),
+  CreateTaskInput: object({ title: trimmedText(200, true), description: taskDescription }, ['title']),
+  UpdateTaskInput: { ...object({ version: taskVersion, title: trimmedText(200, true), description: taskDescription, status: taskStatus }, ['version']), anyOf: [{ required: ['title'] }, { required: ['description'] }, { required: ['status'] }] },
+  Task: object({ id: idSchema, workspaceId: idSchema, title: { type: 'string' }, description: { type: 'string', nullable: true }, status: taskStatus, version: { type: 'integer', minimum: 1, maximum: 2147483647 } }),
   EmptyInput: object({}),
   User: object({ id: idSchema, email: { type: 'string' }, displayName: { type: 'string' } }),
   AuthSession: object({ user: ref('User'), sessionExpiresAt: date }),

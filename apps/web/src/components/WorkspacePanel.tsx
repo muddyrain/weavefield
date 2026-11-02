@@ -1,21 +1,21 @@
+import { useReducedMotionPreference as useReducedMotion } from '../lib/useReducedMotion';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { WorkspaceMember, WorkspaceSummary } from '@weavefield/shared';
 import { useAuth } from '../auth/AuthContext';
+import { rememberWorkspace as remember, workspaceSelectionKey as selectionKey } from '../lib/workspaceSelection';
 import DocumentsPanel from './DocumentsPanel';
+import { toast } from 'sonner';
 import { FileText, Plus, RefreshCw, Settings, Users, ArrowLeft } from 'lucide-react';
-import { motion, useReducedMotion } from 'motion/react';
+import { motion } from 'motion/react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
-import { NativeSelect } from './ui/native-select';
+import { WorkspaceSelect } from './WorkspaceSelect';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { WorkspaceDialog, WorkspaceEmpty, WorkspaceErrorMessage, WorkspaceLoading } from './WorkspacePrimitives';
+const roles = ['OWNER', 'EDITOR', 'VIEWER'].map(value => ({ value, label: value }));
 class WorkspaceError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
-}
-const selectionKey = (userId: string) => `weavefield.workspace.${userId}`;
-function remember(userId: string, id: string) {
-  try { if (id) localStorage.setItem(selectionKey(userId), id); else localStorage.removeItem(selectionKey(userId)); } catch { /* 隐私模式下仍可使用当前页面。 */ }
 }
 
 export default function WorkspacePanel({ open, onClose, onLogin }: { open: boolean; onClose: () => void; onLogin: () => void }) {
@@ -41,9 +41,14 @@ function WorkspaceManager({ userId, open, onClose }: { userId: string; open: boo
   const [detail, setDetail] = useState<WorkspaceSummary | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [documentRefresh, setDocumentRefresh] = useState(0);
+  const [documentRefreshManual, setDocumentRefreshManual] = useState(false);
+  const loaded = useRef(false), visibleScope = useRef('');
   const [pending, setPending] = useState(false);
   const [documentsPending, setDocumentsPending] = useState(false);
   const [error, setError] = useState('');
+  const readFailed = useRef(false);
   const [notice, setNotice] = useState('');
   const [writeCommitted, setWriteCommitted] = useState(false);
   const [view, setView] = useState('documents');
@@ -60,6 +65,7 @@ function WorkspaceManager({ userId, open, onClose }: { userId: string; open: boo
   // ref 同步拒绝冲突/重复提交，状态只负责展示禁用；保护持续到后续读取结束。
   const onDocumentWritePendingChange = useCallback((value: boolean) => {
     if (value && (writing.current || documentsWriting.current)) return false;
+    if (value) { revision.current++; setRefreshing(false); }
     documentsWriting.current = value; setDocumentsPending(value);
     return true;
   }, []);
@@ -80,17 +86,26 @@ function WorkspaceManager({ userId, open, onClose }: { userId: string; open: boo
     return response.status === 204 ? undefined as T : response.json();
   }, [clearSession]);
 
-  const reload = useCallback(async (preferred = selected.current) => {
+  const reload = useCallback(async (preferred = selected.current, manual = false) => {
+    if (documentsWriting.current) return false;
     const stamp = ++revision.current;
-    setLoading(true); setDetail(null); setMembers([]);
+    const background = loaded.current && preferred === visibleScope.current;
+    setLoading(!background); setRefreshing(background);
+    if (!background) { setDetail(null); setMembers([]); }
+    const finishRecovery = () => {
+      // 只在完整读取成功后解除提交保护；写操作本身的错误仍保留。
+      if (readFailed.current) { readFailed.current = false; setWriteCommitted(false); setError(''); }
+    };
     try {
       const list = await api<WorkspaceSummary[]>('/workspaces', 'GET', undefined, stamp);
       if (!alive.current || stamp !== revision.current) return;
       setItems(list);
       const target = preferred || list[0]?.id;
       if (!target || !list.some(item => item.id === target)) {
-        selected.current = ''; remember(userId, '');
+        selected.current = ''; remember(userId, ''); visibleScope.current = ''; loaded.current = true;
+        setDetail(null); setMembers([]);
         if (preferred) setNotice('所选空间已不可访问，请重新选择');
+        finishRecovery();
         return true;
       }
       const [workspace, currentMembers] = await Promise.all([
@@ -99,17 +114,19 @@ function WorkspaceManager({ userId, open, onClose }: { userId: string; open: boo
       ]);
       if (!alive.current || stamp !== revision.current) return;
       selected.current = target; remember(userId, target);
-      setDetail(workspace); setMembers(currentMembers);
+      setDetail(workspace); setMembers(currentMembers); loaded.current = true; visibleScope.current = target;
+      setDocumentRefreshManual(manual); setDocumentRefresh(value => value + 1);
+      finishRecovery();
       return true;
     } catch (error) {
       if (!alive.current || stamp !== revision.current) return;
-      setItems([]);
-      if (error instanceof WorkspaceError && error.status === 404) {
-        selected.current = ''; remember(userId, '');
+      if (!background || error instanceof WorkspaceError && [401, 403, 404].includes(error.status)) {
+        setItems([]); setDetail(null); setMembers([]); loaded.current = false; visibleScope.current = '';
+        if (error instanceof WorkspaceError && [403, 404].includes(error.status)) { selected.current = ''; remember(userId, ''); }
       }
-      setError(error instanceof Error ? error.message : '无法连接工作空间服务');
+      readFailed.current = true; setError(error instanceof Error ? error.message : '无法连接工作空间服务');
       return false;
-    } finally { if (alive.current && stamp === revision.current) setLoading(false); }
+    } finally { if (alive.current && stamp === revision.current) { setLoading(false); setRefreshing(false); } }
   }, [api, userId]);
   useEffect(() => {
     if (open) { setError(''); void reload(); }
@@ -127,13 +144,13 @@ function WorkspaceManager({ userId, open, onClose }: { userId: string; open: boo
   async function perform(action: () => Promise<string | void>) {
     if (writing.current || documentsWriting.current) return false;
     writing.current = true;
-    const stamp = ++revision.current; setWriteCommitted(false); setPending(true); setError(''); setNotice('');
+    const stamp = ++revision.current; readFailed.current = false; setWriteCommitted(false); setPending(true); setError(''); setNotice('');
     try {
       const id = await action();
       if (!alive.current || stamp!==revision.current) return false;
-      setWriteCommitted(true); setNotice('工作空间已更新');
+      setWriteCommitted(true);
       const loaded = await reload(id ?? selected.current);
-      if (alive.current && loaded) setWriteCommitted(false);
+      if (alive.current && loaded) { setWriteCommitted(false); toast.success('工作空间已更新', { id: 'workspace-save' }); }
       return Boolean(loaded);
     } catch (error) {
       if (!alive.current) return;
@@ -151,22 +168,22 @@ function WorkspaceManager({ userId, open, onClose }: { userId: string; open: boo
   }
   const owner = detail?.role === 'OWNER';
   const disabled = loading || pending || documentsPending;
-  return <section className="workspace-page" aria-label="我的工作空间" aria-busy={loading || pending}>
+  return <section className="workspace-page" aria-label="我的工作空间" aria-busy={loading || refreshing || pending}>
     <header className="workspace-page-head">
       <div><p className="workspace-eyebrow">真实账号 / 工作空间</p><h1>{detail?.name ?? '工作空间'}</h1><p className="workspace-boundary">真实空间 · 当前仅文档元数据，不包含 M0 演示文档。</p></div>
-      <div className="workspace-actions"><Button ref={refreshTrigger} type="button" variant="outline" disabled={pending||documentsPending} onClick={()=>{if(writing.current||documentsWriting.current)return;setError('');void reload();}}><RefreshCw data-icon="inline-start"/>刷新工作空间</Button>
+      <div className="workspace-actions"><Button ref={refreshTrigger} data-refreshing={refreshing} type="button" variant="outline" disabled={pending||documentsPending} onClick={()=>{if(writing.current||documentsWriting.current)return;setError('');void reload(selected.current,true);}}><RefreshCw data-icon="inline-start"/>刷新工作空间</Button>
         <Button ref={createTrigger} type="button" disabled={disabled} onClick={()=>setCreating(true)}><Plus data-icon="inline-start"/>新建空间</Button></div>
     </header>
-    <div className="workspace-switcher"><label>当前工作空间<NativeSelect aria-label="当前工作空间" value={detail?.id ?? ''} disabled={disabled} onChange={event=>{if(writing.current||documentsWriting.current)return;selected.current=event.target.value;setError('');setNotice('');setView('documents');void reload(event.target.value);}}>
-      <option value="" disabled>请选择工作空间</option>{items.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</NativeSelect></label>
+    <div className="workspace-switcher"><div className="select-field"><span>当前工作空间</span><WorkspaceSelect loading={loading} aria-label="当前工作空间" placeholder="请选择工作空间" value={detail?.id ?? ''} disabled={disabled} options={items.map(item=>({value:item.id,label:item.name}))} onValueChange={value=>{if(writing.current||documentsWriting.current)return;selected.current=value;setError('');setNotice('');setView('documents');void reload(value);}}/></div>
       {detail && <Badge variant="secondary" data-testid="workspace-role">{detail.role}</Badge>}
       <Button variant="ghost" size="sm" onClick={onClose}><ArrowLeft data-icon="inline-start"/>返回 Nova 本地演示</Button>
     </div>
-    {loading && <WorkspaceLoading>正在加载工作空间…</WorkspaceLoading>}
+    {loading && <WorkspaceLoading kind="workspace">正在加载工作空间…</WorkspaceLoading>}
     {pending && <p role="status">正在保存…</p>}
     {error && !creating && !(removing&&detail&&owner) && <WorkspaceErrorMessage>{error}</WorkspaceErrorMessage>}
     {writeCommitted&&error&&<p role="status">操作已由服务端完成，但刷新失败。请刷新工作空间核对，避免重复提交。</p>}
-    {notice && !error && <p className="workspace-notice" role="status">{notice}</p>}
+    {notice && !error && <WorkspaceErrorMessage>{notice}</WorkspaceErrorMessage>}
+    {refreshing && <p className="refresh-progress" role="status">正在刷新工作空间，现有内容保持可用…</p>}
     {!loading && !error && items.length===0 && <WorkspaceEmpty title="还没有加入任何工作空间" description="可以先创建一个空间，再添加已经注册的协作者。"/>}
     <WorkspaceDialog open={creating} onOpenChange={setCreating} title="创建工作空间" description="为真实账号建立独立工作空间；此操作不创建协作正文。" pending={pending} restoreFocus={createTrigger}>
       <form onSubmit={create} aria-label="创建工作空间">{error&&<WorkspaceErrorMessage>{error}</WorkspaceErrorMessage>}
@@ -181,7 +198,7 @@ function WorkspaceManager({ userId, open, onClose }: { userId: string; open: boo
         <item.icon data-icon="inline-start"/>{item.label}{view===item.id&&<motion.span className="workspace-tab-indicator" layoutId="workspace-tab" transition={{type:'tween',duration:reduce?0:.18}}/>}
       </TabsTrigger>)}</TabsList>
       <TabsContent value="documents" forceMount hidden={view!=='documents'}>
-        <DocumentsPanel key={`${userId}:${detail.id}:${detail.role}`} workspace={detail} workspacePending={pending} onWritePendingChange={onDocumentWritePendingChange}/>
+        <DocumentsPanel key={`${userId}:${detail.id}:${detail.role}`} workspace={detail} workspacePending={pending} refreshToken={documentRefresh} manualRefresh={documentRefreshManual} onWritePendingChange={onDocumentWritePendingChange}/>
       </TabsContent>
       <TabsContent value="members" forceMount hidden={view!=='members'}>
         <div className="workspace-section-heading"><div><h2>空间成员</h2><p>角色决定当前空间的访问范围，权限由服务端验证。</p></div><Badge variant="outline">{members.length} 位成员</Badge></div>
@@ -189,14 +206,14 @@ function WorkspaceManager({ userId, open, onClose }: { userId: string; open: boo
         <ul className="member-list">{members.map(member=><li key={member.user.id} data-testid="workspace-member">
           <div className="member-identity"><span className="member-avatar" aria-hidden="true">{Array.from(member.user.displayName)[0]}</span><div><strong>{member.user.displayName}{member.user.id===userId?'（本人）':''}</strong><small>{member.user.email}</small></div></div>
           {owner ? <div className="member-actions"><form key={member.role} onSubmit={event=>{event.preventDefault();const data=new FormData(event.currentTarget);void perform(async()=>{await api(`/workspaces/${detail.id}/members/${member.user.id}`,'PATCH',{role:data.get('role')});});}}>
-            <NativeSelect name="role" aria-label={`${member.user.displayName}的角色`} defaultValue={member.role} disabled={disabled}>{['OWNER','EDITOR','VIEWER'].map(role=><option key={role}>{role}</option>)}</NativeSelect>
+            <WorkspaceSelect name="role" aria-label={`${member.user.displayName}的角色`} defaultValue={member.role} disabled={disabled} options={roles}/>
             <Button variant="outline" aria-label={`更新${member.user.displayName}角色`} disabled={disabled}>更新角色</Button></form>
             <Button variant="ghost" aria-label={`移除${member.user.displayName}`} disabled={disabled} onClick={()=>setRemoving(member)}>移除</Button></div> : <Badge variant="secondary">{member.role}</Badge>}
         </li>)}</ul>
         {owner && <form className="member-add" aria-label="添加已有账号" onSubmit={event=>{event.preventDefault();const form=event.currentTarget;const data=new FormData(form);void perform(async()=>{await api(`/workspaces/${detail.id}/members`,'POST',{email:data.get('email'),role:data.get('role')});form.reset();});}}>
           <div><h3>添加已有账号</h3><p>仅添加已注册用户，不发送邀请邮件。至少保留一位 OWNER。</p></div>
           <label>成员邮箱<Input name="email" type="email" required maxLength={254} disabled={disabled}/></label>
-          <label>新成员角色<NativeSelect name="role" aria-label="新成员角色" defaultValue="VIEWER" disabled={disabled}>{['OWNER','EDITOR','VIEWER'].map(role=><option key={role}>{role}</option>)}</NativeSelect></label>
+          <div className="select-field"><span>新成员角色</span><WorkspaceSelect name="role" aria-label="新成员角色" defaultValue="VIEWER" disabled={disabled} options={roles}/></div>
           <Button disabled={disabled}>添加成员</Button>
         </form>}
       </TabsContent>

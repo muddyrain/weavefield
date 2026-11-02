@@ -6,8 +6,8 @@ const errors: Record<number, string> = {
   400: '无效 JSON、字段、路径参数或输入；未知字段被拒绝',
   401: '未登录，或 Session 无效、过期、已退出或撤销',
   403: '写请求来源/格式不可信，或已认证成员角色不足',
-  404: '工作空间/成员/文档不存在或不可访问；非成员统一 404；文档必须属于当前空间且未归档',
-  409: '唯一约束冲突，或最后一个 OWNER 不可移除/降级',
+  404: '工作空间/成员/文档/任务不存在或不可访问；非成员统一 404；文档必须属于当前空间且未归档',
+  409: '任务版本冲突、唯一约束冲突，或最后一个 OWNER 不可移除/降级',
   413: 'JSON 请求体超过 4 KiB',
   429: '认证尝试过于频繁（Retry-After: 900）',
   503: '服务暂时不可用，或密码计算并发容量不足；不返回内部异常',
@@ -15,9 +15,9 @@ const errors: Record<number, string> = {
 
 // 组合的都是 Swagger 元数据，不安装 Pipe、Guard、Interceptor 或修改请求/返回值。
 export function ApiContract(options: {
-  tag: 'Auth' | 'Workspace' | 'Document' | 'Health'; summary: string; description?: string;
+  tag: 'Auth' | 'Workspace' | 'Document' | 'Task' | 'Health'; summary: string; description?: string;
   status: 200 | 201 | 204; response?: SchemaName; list?: boolean; body?: SchemaName; write?: boolean;
-  session?: boolean; params?: ('workspaceId' | 'userId' | 'documentId')[]; errors?: number[];
+  session?: boolean; params?: ('workspaceId' | 'userId' | 'documentId' | 'taskId')[]; errors?: number[];
 }) {
   return applyDecorators(
     ApiTags(options.tag),

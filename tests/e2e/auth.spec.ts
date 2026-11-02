@@ -1,3 +1,4 @@
+import { e2eOrigin } from '../helpers/e2e-address';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -35,7 +36,7 @@ test('real registration, refresh, logout and login preserve only valid session s
   await dialog.getByRole('button', { name: '注册并登录', exact: true }).click();
   await expect(page.getByTestId('current-user')).toHaveText('织域开发者');
   await expect(dialog).not.toBeVisible();
-  await expect(page.locator('.auth-notice')).toHaveText('注册成功，已登录');
+  await expect(page.locator('[data-sonner-toast]')).toContainText('注册成功，已登录');
   const cookies = await page.context().cookies();
   const cookie = cookies.find(item => item.name === 'weavefield_session')!;
   expect(cookie.httpOnly).toBe(true); expect(cookie.sameSite).toBe('Lax');
@@ -47,7 +48,7 @@ test('real registration, refresh, logout and login preserve only valid session s
   await page.screenshot({ path: testInfo.outputPath('authenticated.png'), fullPage: true });
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await expect(page.getByTestId('current-user')).toHaveCount(0);
-  await expect(page.locator('.auth-notice')).toHaveText('已退出登录');
+  await expect(page.locator('[data-sonner-toast]')).toContainText('已退出登录');
   await page.reload();
   await openLogin(page);
   await dialog.getByLabel('邮箱', { exact: true }).fill(email);
@@ -148,7 +149,7 @@ for (const width of [390, 375]) {
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
     const displayName = '移动端真实用户' + '长昵称'.repeat(10);
     const registration = await page.request.post('/api/auth/register', {
-      headers: { Origin: 'http://127.0.0.1:15173', 'X-Weavefield-Request': '1' },
+      headers: { Origin: e2eOrigin, 'X-Weavefield-Request': '1' },
       data: { email: `${run}-mobile-${width}@example.invalid`, password, displayName },
     });
     expect(registration.status()).toBe(201);
@@ -201,7 +202,7 @@ for (const width of [390, 375]) {
     await logout.click();
     await expect(page.getByTestId('current-user')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '登录 / 注册', exact: true })).toBeVisible();
-    await expect(page.locator('.auth-notice')).toHaveText('已退出登录');
+    await expect(page.locator('[data-sonner-toast]')).toContainText('已退出登录');
     await expect(copy).toBeEnabled();
     await checkNavigation('logged-out');
     await testInfo.attach('mobile-navigation-metrics', { body: JSON.stringify(measurements, null, 2), contentType: 'application/json' });

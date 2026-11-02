@@ -29,7 +29,7 @@ flowchart TB
 - `packages/database/src/index.ts` 将生成类型与进程内共享 `prisma` 实例统一导出，编译为 CommonJS 供后续 NestJS 使用。导入不会立即连接；各服务管理连接生命周期，并为自身进程注入 `DATABASE_URL`。不同服务进程各有连接池，不共享跨进程单例。M1.2 的 DatabaseService 已通过 NestJS Provider 连接该实例，应用启用关闭钩子；M1.3 工作空间模块复用同一 Provider，不新建连接池。
 - `Membership` 用 `(workspaceId, userId)` 复合主键防止重复成员；新增 `userId` 索引补足按用户查询和外键删除检查。Document 的 `(workspaceId, updatedAt)` 索引用于空间内文档列表。删除空间级联删除成员关系、文档及其快照；删除用户只删除成员关系，不删除工作空间。
 - 数据库外键和唯一约束验证关系完整性，不能替代授权。Workspace 没有自动生成 owner 的数据库约束；M1.3 使用事务一起创建空间与 OWNER。M1.2 实现邮箱规范化，M1.3 在 Workspace / Membership 接口实施角色与租户检查，M1.4 已覆盖文档元数据，尚不覆盖 M2 协作连接等后续实体。
-- DocumentSnapshot（`Bytes`）、Board、BoardNode、BoardEdge、Task、EntityLink 当前仅有表结构。BoardEdge 的端点 ID、Task 的 assigneeId 和 EntityLink 的多态引用尚无目标实体外键；启用这些业务前须验证对象存在、归属及删除策略。本轮未把普通二进制字段读写等同于 Yjs PostgreSQL 持久化。
+- DocumentSnapshot（`Bytes`）、Board、BoardNode、BoardEdge、EntityLink 当前仅有表结构；Task 的基础业务由 M3-01 启用。BoardEdge 的端点 ID、Task 的 assigneeId 和 EntityLink 的多态引用尚无目标实体外键；启用这些业务前须验证对象存在、归属及删除策略。本轮未把普通二进制字段读写等同于 Yjs PostgreSQL 持久化。
 - `packages/database/test/integration.cjs` 在显式指定的本机测试库验证真实迁移、CRUD、约束、事务和级联删除；测试不执行 reset，也不重启或清空用户已有数据库。服务重启持久化需在保留同一卷的情况下另行精确比较已提交记录。
 
 ### M1.2 认证数据流
@@ -197,3 +197,13 @@ flowchart LR
 
 - [ADR-0005 Workspace 与 Membership RBAC 及并发 OWNER 保护](decisions/ADR-0005-workspace-membership-rbac.md)
 - [ADR-0006 文档元数据、权限与软归档](decisions/ADR-0006-document-metadata-and-archive.md)
+
+## M3-01 · 真实任务功能切片
+
+`TasksModule` 复用 AuthModule、DatabaseModule 和 WorkspaceAccess。四个空间内路由提供列表、详情、创建和条件更新；不接入 Collab、Yjs、React Flow 或 EntityLink。读操作先校验真实 Membership，写操作共享 Workspace 父行锁并在等待后重新鉴权。
+
+Task 通过 version 条件更新防止旧客户端覆盖：资源归属/存在性 404、只读角色 403、旧版本 409。DTO 只含本轮启用的六个字段，不暴露或接收 assigneeId/dueAt。模型和迁移保持不变，详见 [ADR-0007](decisions/ADR-0007-task-versioned-writes.md)。
+
+React `TasksPage` 与 Workspace 管理页共用按 userId 隔离的空间选择 key。请求代际和生命周期保护旧响应；同步写入标记持续至后续读取结束，自动刷新不丢失成功反馈。AuthContext 继续独立验证 Session，401 清理受保护 UI；403/404 重新确认可访问范围，409 显式加载最新版本。创建响应丢失时不自动重发。
+
+这是普通 REST 任务管理，不是实时看板。Nova 编辑器实例及原有协作生命周期不变；M2 正式协作仍未实施。

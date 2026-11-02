@@ -31,7 +31,7 @@ Schema: `packages/database/prisma/schema.prisma`。M1.1 增加全部草案表的
 | Board | 流程画布 | id / workspaceId / title |
 | BoardNode | 画布节点状态 | id / boardId / kind / x / y / data / version |
 | BoardEdge | 节点连接 | id / boardId / sourceId / targetId |
-| Task | 工作任务 | id / workspaceId / title / status / version |
+| Task | 工作任务 | id / workspaceId / title / description / status / version |
 | EntityLink | 跨视图关联 | sourceType/id / targetType/id / relation |
 
 ## 数据一致性与权限
@@ -71,3 +71,11 @@ Document 通过 workspaceId 外键属于一个空间，以稳定 id 作为业务
 归档设置 archivedAt，连同 updatedAt 更新；不物理删除 Document，不触发外键级联，不删除 DocumentSnapshot、Membership、Workspace 或其他文档。归档后列表排除该记录，详情 / 重命名 / 重复归档均返回 404。所有文档写入与成员变更共享父行锁，防止排队撤权和归档 / 改名竞态；重命名没有清除 archivedAt 的写路径。
 
 DocumentSnapshot 在本阶段仍仅有表结构，API 不写 binaryState；测试使用二进制探针验证软归档原样保留快照，这不代表实现了 Yjs PostgreSQL 持久化或重启恢复。恢复归档、物理删除和快照 UI 未实现。详见 [ADR-0006](decisions/ADR-0006-document-metadata-and-archive.md)。
+
+## M3-01 Task 业务契约
+
+现有 Task 在本轮启用 id、workspaceId、title、description、status、version，不改变 Schema 或 Migration。status 为 TODO / IN_PROGRESS / DONE，创建默认 TODO、version=1。描述是 nullable 普通文本，空白归一为 null；标题允许重复。
+
+PATCH 必填当前 version，成功更新递增 1，条件失配 409。空间归属与权限不能从客户端字段获得，任务写入与成员变更共享 Workspace 父行锁。DTO 不包含 assigneeId/dueAt，这两个字段不接受写入；任务删除和关联尚未开放。
+
+本轮没有为 assigneeId 补建外键或跨空间指派模型，也没有启用 EntityLink。后续功能需要独立权限设计与审查。

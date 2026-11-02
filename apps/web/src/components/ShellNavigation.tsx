@@ -1,5 +1,6 @@
+import { useReducedMotionPreference as useReducedMotion } from '../lib/useReducedMotion';
 import { FileText, FolderClosed, LayoutGrid, Workflow } from 'lucide-react';
-import { LayoutGroup, motion, useReducedMotion } from 'motion/react';
+import { LayoutGroup, motion } from 'motion/react';
 import { Button } from './ui/button';
 
 export type PageTab = 'document' | 'workflow' | 'tasks' | 'workspace';
@@ -16,9 +17,9 @@ export function ShellNavigation({ active, collapsed = false, authenticated, onNa
   const reduce = useReducedMotion();
   const items = [
     { id: 'workspace', label: '工作空间', icon: FolderClosed, group: '真实账号', hint: authenticated ? '成员与文档元数据' : '登录后可用' },
+    { id: 'tasks', label: '开发任务', icon: LayoutGrid, hint: authenticated ? '真实空间任务看板' : '登录后可用' },
     { id: 'document', label: '产品需求文档', icon: FileText, group: '本地协作演示', hint: 'Nova · localhost' },
     { id: 'workflow', label: '用户流程', icon: Workflow, group: '后续规划', hint: '规划中' },
-    { id: 'tasks', label: '开发任务', icon: LayoutGrid, hint: '规划中' },
   ] as const;
   return <LayoutGroup id={group}><nav className="shell-navigation" aria-label="项目导航">{items.map(item => <div key={item.id}>
     {'group' in item && <div className="shell-nav-section">{collapsed ? <span aria-hidden="true">·</span> : item.group}</div>}

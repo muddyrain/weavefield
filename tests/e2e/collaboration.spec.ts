@@ -1,3 +1,4 @@
+import { e2eApi, e2eCollabHttp, e2eCollabPort } from '../helpers/e2e-address';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -73,14 +74,14 @@ async function startCollab() {
     path.join(project, 'apps/collab/src/index.ts'),
   ], {
     cwd: storage,
-    env: { ...process.env, NODE_ENV: 'test', COLLAB_PORT: '11234', COLLAB_DEV_TOKEN: 'm0-e2e-local-only-token' },
+    env: { ...process.env, NODE_ENV: 'test', COLLAB_PORT: String(e2eCollabPort), COLLAB_DEV_TOKEN: 'm0-e2e-local-only-token' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout?.on('data', data => { serverLog += data; });
   server.stderr?.on('data', data => { serverLog += data; });
   await expect.poll(async () => {
     if (server.exitCode !== null) throw new Error(serverLog);
-    return fetch('http://127.0.0.1:11234').then(r => r.ok).catch(() => false);
+    return fetch(e2eCollabHttp).then(r => r.ok).catch(() => false);
   }).toBe(true);
 }
 
@@ -253,7 +254,7 @@ test('unavailable local collab shows recovery guidance and clears it after synci
 });
 
 test('two windows sync, reconnect and restore binary state after a server restart', async ({ browser, request }) => {
-  const health = await request.get('http://127.0.0.1:13001/health');
+  const health = await request.get(e2eApi + '/health');
   expect(health.ok()).toBe(true);
   expect(await health.json()).toMatchObject({ ok: true, service: 'weavefield-api' });
 

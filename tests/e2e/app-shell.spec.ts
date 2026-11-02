@@ -1,3 +1,4 @@
+import { e2eOrigin, e2eCollabHttp, e2eCollabPort } from '../helpers/e2e-address';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -13,7 +14,7 @@ const localRequire = createRequire(path.resolve('package.json'));
 const apiRequire = createRequire(path.resolve('apps/api/package.json'));
 let prisma: any, authApi: any, authBase: string, server: ChildProcess, storage: string;
 const email = `ui201-${randomUUID()}@example.invalid`, password = 'UI201 local test password 42!';
-const headers = { Origin: 'http://127.0.0.1:15173', 'X-Weavefield-Request': '1' };
+const headers = { Origin: e2eOrigin, 'X-Weavefield-Request': '1' };
 test.use({ trace: 'off', video: 'on' });
 test.beforeAll(async ({ browser }) => {
   prisma = await localRequire('./tests/helpers/database.cjs').prepareDatabase();
@@ -24,8 +25,8 @@ test.beforeAll(async ({ browser }) => {
   try { expect((await context.request.post(`${authBase}/auth/register`,{headers,data:{email,password,displayName:'UI2 本机验收'}})).status()).toBe(201); }
   finally { await context.close(); }
   storage = await mkdtemp(path.join(tmpdir(),'weavefield-ui201-'));
-  server = spawn(process.execPath,['--import',pathToFileURL(path.resolve('apps/collab/node_modules/tsx/dist/loader.mjs')).href,path.resolve('apps/collab/src/index.ts')],{cwd:storage,env:{...process.env,NODE_ENV:'test',COLLAB_PORT:'11234',COLLAB_DEV_TOKEN:'m0-e2e-local-only-token'},stdio:'ignore'});
-  await expect.poll(()=>fetch('http://127.0.0.1:11234').then(r=>r.ok).catch(()=>false)).toBe(true);
+  server = spawn(process.execPath,['--import',pathToFileURL(path.resolve('apps/collab/node_modules/tsx/dist/loader.mjs')).href,path.resolve('apps/collab/src/index.ts')],{cwd:storage,env:{...process.env,NODE_ENV:'test',COLLAB_PORT:String(e2eCollabPort),COLLAB_DEV_TOKEN:'m0-e2e-local-only-token'},stdio:'ignore'});
+  await expect.poll(()=>fetch(e2eCollabHttp).then(r=>r.ok).catch(()=>false)).toBe(true);
 });
 test.afterAll(async () => {
   if(server?.exitCode===null){const exited=once(server,'exit');server.kill();await exited;}
@@ -89,7 +90,7 @@ for(const width of [390,375])test.describe(`${width} mobile shell`,()=>{
     await page.screenshot({path:info.outputPath(`${width}-sheet.png`)});
     await page.keyboard.press('Escape');await expect(sheet).toHaveCount(0);await expect(trigger).toBeFocused();
     await trigger.click();await sheet.getByRole('button',{name:'开发任务',exact:true}).click();await expect(sheet).toHaveCount(0);
-    await expect(page.getByRole('heading',{name:'开发任务 · 规划中'})).toBeVisible();const skip=page.getByRole('link',{name:'跳到主要内容'});await skip.focus();await skip.press('Enter');await expect(page.locator('#main-content')).toBeFocused();
+    await expect(page.getByRole('heading',{name:'开发任务',exact:true})).toBeVisible();const skip=page.getByRole('link',{name:'跳到主要内容'});await skip.focus();await skip.press('Enter');await expect(page.locator('#main-content')).toBeFocused();
     await trigger.click();await sheet.getByRole('button',{name:'产品需求文档',exact:true}).click();await expect(sheet).toHaveCount(0);await expect(editor).toContainText('移动端真实协作文档');
     await page.getByRole('button',{name:'登录 / 注册',exact:true}).click();await expect(page.getByRole('dialog',{name:'登录'})).toBeVisible();await page.screenshot({path:info.outputPath(`${width}-login.png`)});await page.keyboard.press('Escape');
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);expect(await page.evaluate(()=>scrollY)).toBe(0);
